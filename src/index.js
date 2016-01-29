@@ -5,12 +5,17 @@ var Protobuf = require('pbf'),
 
 module.exports = L.TileLayer.Pois = L.TileLayer.extend({
     options: {
-        layers: ['poi_label']
+        layers: ['poi_label'],
+        maxScalerank: 2
     },
 
     initialize: function(tileUrl, options) {
         L.TileLayer.prototype.initialize.call(this, tileUrl, options);
-        this._featureLayer = L.geoJson();
+        this._featureLayer = L.geoJson(null, {
+            onEachFeature: function(f, l) {
+                l.bindPopup('<h3>' + f.properties.name + '</h3>');
+            }
+        });
     },
 
     onAdd: function(map) {
@@ -51,10 +56,12 @@ module.exports = L.TileLayer.Pois = L.TileLayer.extend({
         var x = tilePoint.x,
             y = tilePoint.y,
             z = tilePoint.z,
+            maxScalerank = this.options.maxScalerank,
             i,
             j,
             layerName,
-            layer;
+            layer,
+            f;
 
         tile.datum = new VectorTile(new Protobuf(data));
 
@@ -63,7 +70,10 @@ module.exports = L.TileLayer.Pois = L.TileLayer.extend({
             layer = tile.datum.layers[layerName];
             if (layer) {
                 for (j = 0; j < layer.length; j++) {
-                    this._featureLayer.addData(layer.feature(j).toGeoJSON(x, y, z));
+                    f = layer.feature(j);
+                    if (f.properties['scalerank'] <= maxScalerank) {
+                        this._featureLayer.addData(f.toGeoJSON(x, y, z));
+                    }
                 }
             }
         }
