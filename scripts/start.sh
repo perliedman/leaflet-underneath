@@ -1,5 +1,5 @@
 #!/bin/sh
 
-watchify -t browserify-shim src/index.js -o dist/mvt-pois-src.js &
+watchify -t browserify-shim src/index.js -o dist/leaflet-underneath-src.js &
 http-server
 

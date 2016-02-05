@@ -4,7 +4,7 @@ var Protobuf = require('pbf'),
     corslite = require('corslite'),
     rbush = require('rbush');
 
-module.exports = L.TileLayer.Pois = L.TileLayer.extend({
+module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
         layers: [],
         defaultTolerance: 100,
