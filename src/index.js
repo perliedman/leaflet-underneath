@@ -19,7 +19,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             }
 
             return isDupe;
-        }
+        },
+        lazy: true
     },
 
     initialize: function(tileUrl, options) {
@@ -27,50 +28,71 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, tolerance) {
+    query: function(latLng, tolerance, cb, context) {
         if (!this._map) return;
 
         tolerance = tolerance || this.options.defaultTolerance;
 
-        var p = this._map.latLngToLayerPoint(latLng),
-            sqDistToP = function(s) {
-                var dx = s[0] - p.x,
-                    dy = s[1] - p.y;
-                return dx * dx + dy * dy;
-            },
-            halfT = tolerance / 2,
-            search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
-            results = [],
-            context = {},
-            isDuplicate = this.options.isDuplicate,
-            i,
-            f;
+        var p = this._map.project(latLng),
+            tilePoint = p.divideBy(this.options.tileSize)._floor(),
+            query = function query() {
+                var sqDistToP = function(s) {
+                        var dx = s[0] - p.x,
+                            dy = s[1] - p.y;
+                        return dx * dx + dy * dy;
+                    },
+                    halfT = tolerance / 2,
+                    search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
+                    results = [],
+                    context = {},
+                    isDuplicate = this.options.isDuplicate,
+                    i,
+                    f;
 
-        search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
+                search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
 
-        for (i = 0; i < search.length; i++) {
-            f = search[i][4];
-            if (!isDuplicate(f, context)) {
-                results.push(f);
-            }
+                for (i = 0; i < search.length; i++) {
+                    f = search[i][4];
+                    if (!isDuplicate(f, context)) {
+                        results.push(f);
+                    }
+                }
+
+                cb.call(context, null, results);
+            }.bind(this);
+
+        if (this.options.lazy && !this._tiles[this._tileKey(tilePoint)]) {
+            this._addTile(tilePoint, null, true, query);
+            return this;
         }
 
-        return results;
+        query();
+        return this;
     },
 
-    _addTile: function(tilePoint) {
-        var key = tilePoint.x + ':' + tilePoint.y,
+    _addTile: function(tilePoint, fragment, force, cb) {
+        var key = this._tileKey(tilePoint),
             tile = { datum: null, processed: false };
 
-        if (!this._tiles[key]) {
+        cb = cb || function() {};
+
+        if (!this._tiles[key] && (!this.options.lazy || force)) {
             this._tiles[key] = tile;
-            this._loadTile(tile, tilePoint);
+            return this._loadTile(tile, tilePoint, cb);
         }
+
+        return cb();
     },
 
-    _loadTile: function(tile, tilePoint) {
+    _tileKey: function(tilePoint) {
+        return tilePoint.x + ':' + tilePoint.y;
+    },
+
+    _loadTile: function(tile, tilePoint, cb) {
         var url,
             request;
+
+        cb = cb || function() {};
 
         this._adjustTilePoint(tilePoint);
         url = this.getTileUrl(tilePoint);
@@ -81,9 +103,11 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
+                return cb(err);
             }
 
             this._tileLoaded(tile, tilePoint, new Uint8Array(data.response));
+            return cb();
         }, this), true);
         request.responseType = 'arraybuffer';
     },
@@ -126,7 +150,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                             });
                             continue;
                         }
-                        p = this._map.latLngToLayerPoint([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
+                        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
                         this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
                         this.fire('featureadded', {
                             feature: geojson
