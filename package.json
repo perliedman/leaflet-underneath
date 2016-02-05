@@ -1,13 +1,14 @@
 {
-  "name": "mvt-pois",
+  "name": "leaflet-underneath",
   "version": "1.0.0",
-  "description": "",
+  "description": "Find features from a point using Mapbox Vector Tiles data",
+  "keywords": ["leaflet", "vector-tiles", "poi"],
   "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "start": "./scripts/build.sh && ./scripts/start.sh"
   },
-  "author": "",
+  "author": "Per Liedman <per@liedman.net>",
   "license": "ISC",
   "browserify-shim": {
     "leaflet": "global:L"
@@ -15,6 +16,7 @@
   "dependencies": {
     "leaflet": "^0.7.7",
     "pbf": "^1.3.5",
+    "rbush": "^1.4.2",
     "vector-tile": "^1.2.0"
   },
   "devDependencies": {
