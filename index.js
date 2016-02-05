@@ -14,7 +14,7 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-var pois = new L.TileLayer.Pois('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
+var pois = new L.TileLayer.Underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
             '{z}/{x}/{y}.vector.pbf?access_token=pk.eyJ1IjoiZG90bmV0bWVudG9yIiwiYSI6ImNpZXpwOXZ6azAwcDNzdmx0dDZqcmNkM3MifQ.FEM3zoH8orR9Pwwgr5j-5g', {
                 layers: ['poi_label']
             })
