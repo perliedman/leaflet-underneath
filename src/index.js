@@ -8,17 +8,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
         layers: [],
         defaultTolerance: 100,
-        isDuplicate: function(f, context) {
-            var osmId = f.properties.osm_id,
-                name = f.properties.name,
-                isDupe = context[osmId] || context[name];
-
-            if (!isDupe) {
-                context[osmId] = true;
-                context[name] = true;
-            }
-
-            return isDupe;
+        featureId: function(f) {
+            return f.properties.osm_id;
         },
         lazy: true
     },
@@ -58,8 +49,6 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             halfT = tolerance / 2,
             search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
             results = [],
-            context = {},
-            isDuplicate = this.options.isDuplicate,
             i,
             f;
 
@@ -67,9 +56,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
 
         for (i = 0; i < search.length; i++) {
             f = search[i][4];
-            if (!isDuplicate(f, context)) {
-                results.push(f);
-            }
+            results.push(f);
         }
 
         cb.call(context, null, results);
@@ -137,6 +124,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
 
     _reset: function() {
         L.TileLayer.prototype._reset.call(this);
+        this._features = {};
         this._bush.clear();
         this.fire('featurescleared');
     },
@@ -164,12 +152,17 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     _handleLayer: function(layer, x, y, z) {
         var filter = this.options.filter,
             j,
-            f;
+            f,
+            id;
 
         for (j = 0; j < layer.length; j++) {
             f = layer.feature(j);
             if (!filter || filter(f)) {
-                this._handleFeature(f.toGeoJSON(x, y, z));
+                id = this.options.featureId(f);
+                if (!this._features[id]) {
+                    this._features[id] = true;
+                    this._handleFeature(f.toGeoJSON(x, y, z));
+                }
             }
         }
     },
