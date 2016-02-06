@@ -32,7 +32,7 @@ map.on('click', function(e) {
         content = 'Nearby: <ul>',
         showResults = function(results) {
             featureLayer.addData(results);
-            for (var i = 0; i < 5 && i < results.length; i++) {
+            for (var i = 0; i < results.length; i++) {
                 var r = results[i],
                     c = r.geometry.coordinates;
                 content += '<li><span class="maki-icon ' + r.properties.maki + '"></span>' + r.properties.name + '</li>';
@@ -44,17 +44,13 @@ map.on('click', function(e) {
                 .setLatLng(e.latlng)
                 .setContent(content)
                 .openOn(map);
-        },
-        query = function(tolerance) {
-            pois.query(e.latlng, tolerance, function(err, results) {
-                if (results.length > 0) {
-                    showResults(results);
-                } else if (tolerance < 50) {
-                    query(tolerance * 2);
-                }
-            });
         };
 
     featureLayer.clearLayers();
-    query(3);
+    pois.query(e.latlng, 100, function(err, results) {
+        if (results.length > 0) {
+            results = results.splice(0, 5);
+            showResults(results);
+        }
+    });
 });
