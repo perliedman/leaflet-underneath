@@ -33,11 +33,10 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
 
         tolerance = tolerance || this.options.defaultTolerance;
 
-        var p = this._map.project(latLng),
-            tilePoint = p.divideBy(this.options.tileSize)._floor();
+        var p = this._map.project(latLng);
 
-        if (this.options.lazy && !this._tiles[this._tileKey(tilePoint)]) {
-            this._addTile(tilePoint, null, true, L.bind(function(err) {
+        if (this.options.lazy) {
+            this._loadTiles(p, tolerance, L.bind(function(err) {
                 if (err) {
                     return cb(err);
                 }
@@ -76,16 +75,36 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         cb.call(context, null, results);
     },
 
-    _addTile: function(tilePoint, fragment, force, cb) {
+    _loadTiles: function(p, tolerance, cb) {
+        var halfT = tolerance / 2,
+            se = p.add([halfT, halfT]),
+            nw = p.subtract([halfT, halfT]),
+            tileBounds = L.bounds(
+                nw.divideBy(this.options.tileSize)._floor(),
+                se.divideBy(this.options.tileSize)._floor());
+
+        this._forceLoadTiles = true;
+        this._addTilesFromCenterOut(tileBounds);
+        this._forceLoadTiles = false;
+
+        if (this._tilesToLoad) {
+            this.once('load', function() { cb(); });
+        } else {
+            cb();
+        }
+    },
+
+    _addTile: function(tilePoint, fragment, cb) {
         var key = this._tileKey(tilePoint),
             tile = { datum: null, processed: false };
 
-        if (!this._tiles[key] && (!this.options.lazy || force)) {
+        if (!this._tiles[key] && (!this.options.lazy || this._forceLoadTiles)) {
             this._tiles[key] = tile;
             return this._loadTile(tile, tilePoint, cb);
+        } else {
+            this._tileLoaded();
+            return cb && cb();
         }
-
-        return cb && cb();
     },
 
     _tileKey: function(tilePoint) {
@@ -105,10 +124,12 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
+                this._tileLoaded();
                 return cb && cb(err);
             }
 
-            this._tileLoaded(tile, tilePoint, new Uint8Array(data.response));
+            this._parseTile(tile, tilePoint, new Uint8Array(data.response));
+            this._tileLoaded();
             return cb && cb();
         }, this), true);
         request.responseType = 'arraybuffer';
@@ -120,19 +141,14 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this.fire('featurescleared');
     },
 
-    _tileLoaded: function(tile, tilePoint, data) {
+    _parseTile: function(tile, tilePoint, data) {
         var x = tilePoint.x,
             y = tilePoint.y,
             z = tilePoint.z,
             vectorTile = new VectorTile(new Protobuf(data)),
-            filter = this.options.filter,
             i,
-            j,
             layerName,
-            layer,
-            f,
-            p,
-            geojson;
+            layer;
 
         tile.processed = true;
 
@@ -140,27 +156,39 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             layerName = this.options.layers[i];
             layer = vectorTile.layers[layerName];
             if (layer) {
-                for (j = 0; j < layer.length; j++) {
-                    f = layer.feature(j);
-                    if (!filter || filter(f)) {
-                        geojson = f.toGeoJSON(x, y, z);
-                        if (geojson.geometry.type !== 'Point') {
-                            this.fire('featureerror', {
-                                tilepoint: tilePoint,
-                                error: 'Feature does not have a point geometry',
-                                feature: f
-                            });
-                            continue;
-                        }
-                        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
-                        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
-                        this.fire('featureadded', {
-                            feature: geojson
-                        });
-                    }
-                }
+                this._handleLayer(layer, x, y, z);
             }
         }
+    },
+
+    _handleLayer: function(layer, x, y, z) {
+        var filter = this.options.filter,
+            j,
+            f;
+
+        for (j = 0; j < layer.length; j++) {
+            f = layer.feature(j);
+            if (!filter || filter(f)) {
+                this._handleFeature(f.toGeoJSON(x, y, z));
+            }
+        }
+    },
+
+    _handleFeature: function(geojson) {
+        var p;
+
+        if (geojson.geometry.type !== 'Point') {
+            this.fire('featureerror', {
+                error: 'Feature does not have a point geometry',
+                feature: f
+            });
+            return;
+        }
+        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
+        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
+        this.fire('featureadded', {
+            feature: geojson
+        });
     }
 });
 
