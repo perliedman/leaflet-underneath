@@ -34,54 +34,58 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         tolerance = tolerance || this.options.defaultTolerance;
 
         var p = this._map.project(latLng),
-            tilePoint = p.divideBy(this.options.tileSize)._floor(),
-            query = function query() {
-                var sqDistToP = function(s) {
-                        var dx = s[0] - p.x,
-                            dy = s[1] - p.y;
-                        return dx * dx + dy * dy;
-                    },
-                    halfT = tolerance / 2,
-                    search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
-                    results = [],
-                    context = {},
-                    isDuplicate = this.options.isDuplicate,
-                    i,
-                    f;
-
-                search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
-
-                for (i = 0; i < search.length; i++) {
-                    f = search[i][4];
-                    if (!isDuplicate(f, context)) {
-                        results.push(f);
-                    }
-                }
-
-                cb.call(context, null, results);
-            }.bind(this);
+            tilePoint = p.divideBy(this.options.tileSize)._floor();
 
         if (this.options.lazy && !this._tiles[this._tileKey(tilePoint)]) {
-            this._addTile(tilePoint, null, true, query);
+            this._addTile(tilePoint, null, true, L.bind(function(err) {
+                if (err) {
+                    return cb(err);
+                }
+                this._query(p, tolerance, cb, context);
+            }, this));
             return this;
         }
 
-        query();
+        this._query(p, tolerance, cb, context);
         return this;
+    },
+
+    _query: function(p, tolerance, cb, context) {
+        var sqDistToP = function(s) {
+                var dx = s[0] - p.x,
+                    dy = s[1] - p.y;
+                return dx * dx + dy * dy;
+            },
+            halfT = tolerance / 2,
+            search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
+            results = [],
+            context = {},
+            isDuplicate = this.options.isDuplicate,
+            i,
+            f;
+
+        search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
+
+        for (i = 0; i < search.length; i++) {
+            f = search[i][4];
+            if (!isDuplicate(f, context)) {
+                results.push(f);
+            }
+        }
+
+        cb.call(context, null, results);
     },
 
     _addTile: function(tilePoint, fragment, force, cb) {
         var key = this._tileKey(tilePoint),
             tile = { datum: null, processed: false };
 
-        cb = cb || function() {};
-
         if (!this._tiles[key] && (!this.options.lazy || force)) {
             this._tiles[key] = tile;
             return this._loadTile(tile, tilePoint, cb);
         }
 
-        return cb();
+        return cb && cb();
     },
 
     _tileKey: function(tilePoint) {
@@ -92,8 +96,6 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         var url,
             request;
 
-        cb = cb || function() {};
-
         this._adjustTilePoint(tilePoint);
         url = this.getTileUrl(tilePoint);
         request = corslite(url, L.bind(function(err, data) {
@@ -103,11 +105,11 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
-                return cb(err);
+                return cb && cb(err);
             }
 
             this._tileLoaded(tile, tilePoint, new Uint8Array(data.response));
-            return cb();
+            return cb && cb();
         }, this), true);
         request.responseType = 'arraybuffer';
     },
