@@ -94,6 +94,92 @@ function corslite(url, callback, cors) {
 if (typeof module !== 'undefined') module.exports = corslite;
 
 },{}],2:[function(require,module,exports){
+exports.read = function (buffer, offset, isLE, mLen, nBytes) {
+  var e, m
+  var eLen = nBytes * 8 - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var nBits = -7
+  var i = isLE ? (nBytes - 1) : 0
+  var d = isLE ? -1 : 1
+  var s = buffer[offset + i]
+
+  i += d
+
+  e = s & ((1 << (-nBits)) - 1)
+  s >>= (-nBits)
+  nBits += eLen
+  for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+  m = e & ((1 << (-nBits)) - 1)
+  e >>= (-nBits)
+  nBits += mLen
+  for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+  if (e === 0) {
+    e = 1 - eBias
+  } else if (e === eMax) {
+    return m ? NaN : ((s ? -1 : 1) * Infinity)
+  } else {
+    m = m + Math.pow(2, mLen)
+    e = e - eBias
+  }
+  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
+}
+
+exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
+  var e, m, c
+  var eLen = nBytes * 8 - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
+  var i = isLE ? 0 : (nBytes - 1)
+  var d = isLE ? 1 : -1
+  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
+
+  value = Math.abs(value)
+
+  if (isNaN(value) || value === Infinity) {
+    m = isNaN(value) ? 1 : 0
+    e = eMax
+  } else {
+    e = Math.floor(Math.log(value) / Math.LN2)
+    if (value * (c = Math.pow(2, -e)) < 1) {
+      e--
+      c *= 2
+    }
+    if (e + eBias >= 1) {
+      value += rt / c
+    } else {
+      value += rt * Math.pow(2, 1 - eBias)
+    }
+    if (value * c >= 2) {
+      e++
+      c /= 2
+    }
+
+    if (e + eBias >= eMax) {
+      m = 0
+      e = eMax
+    } else if (e + eBias >= 1) {
+      m = (value * c - 1) * Math.pow(2, mLen)
+      e = e + eBias
+    } else {
+      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
+      e = 0
+    }
+  }
+
+  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
+
+  e = (e << mLen) | m
+  eLen += mLen
+  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
+
+  buffer[offset + i - d] |= s * 128
+}
+
+},{}],3:[function(require,module,exports){
 'use strict';
 
 // lightweight Buffer shim for pbf browser build
@@ -254,7 +340,7 @@ function encodeString(str) {
     return bytes;
 }
 
-},{"ieee754":4}],3:[function(require,module,exports){
+},{"ieee754":2}],4:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -684,93 +770,140 @@ function writePackedFixed64(arr, pbf)  { for (var i = 0; i < arr.length; i++) pb
 function writePackedSFixed64(arr, pbf) { for (var i = 0; i < arr.length; i++) pbf.writeSFixed64(arr[i]); }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./buffer":2}],4:[function(require,module,exports){
-exports.read = function (buffer, offset, isLE, mLen, nBytes) {
-  var e, m
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var nBits = -7
-  var i = isLE ? (nBytes - 1) : 0
-  var d = isLE ? -1 : 1
-  var s = buffer[offset + i]
+},{"./buffer":3}],5:[function(require,module,exports){
+'use strict';
 
-  i += d
+module.exports = Point;
 
-  e = s & ((1 << (-nBits)) - 1)
-  s >>= (-nBits)
-  nBits += eLen
-  for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  m = e & ((1 << (-nBits)) - 1)
-  e >>= (-nBits)
-  nBits += mLen
-  for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  if (e === 0) {
-    e = 1 - eBias
-  } else if (e === eMax) {
-    return m ? NaN : ((s ? -1 : 1) * Infinity)
-  } else {
-    m = m + Math.pow(2, mLen)
-    e = e - eBias
-  }
-  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
+function Point(x, y) {
+    this.x = x;
+    this.y = y;
 }
 
-exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
-  var e, m, c
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
-  var i = isLE ? 0 : (nBytes - 1)
-  var d = isLE ? 1 : -1
-  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
+Point.prototype = {
+    clone: function() { return new Point(this.x, this.y); },
 
-  value = Math.abs(value)
+    add:     function(p) { return this.clone()._add(p);     },
+    sub:     function(p) { return this.clone()._sub(p);     },
+    mult:    function(k) { return this.clone()._mult(k);    },
+    div:     function(k) { return this.clone()._div(k);     },
+    rotate:  function(a) { return this.clone()._rotate(a);  },
+    matMult: function(m) { return this.clone()._matMult(m); },
+    unit:    function() { return this.clone()._unit(); },
+    perp:    function() { return this.clone()._perp(); },
+    round:   function() { return this.clone()._round(); },
 
-  if (isNaN(value) || value === Infinity) {
-    m = isNaN(value) ? 1 : 0
-    e = eMax
-  } else {
-    e = Math.floor(Math.log(value) / Math.LN2)
-    if (value * (c = Math.pow(2, -e)) < 1) {
-      e--
-      c *= 2
+    mag: function() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    },
+
+    equals: function(p) {
+        return this.x === p.x &&
+               this.y === p.y;
+    },
+
+    dist: function(p) {
+        return Math.sqrt(this.distSqr(p));
+    },
+
+    distSqr: function(p) {
+        var dx = p.x - this.x,
+            dy = p.y - this.y;
+        return dx * dx + dy * dy;
+    },
+
+    angle: function() {
+        return Math.atan2(this.y, this.x);
+    },
+
+    angleTo: function(b) {
+        return Math.atan2(this.y - b.y, this.x - b.x);
+    },
+
+    angleWith: function(b) {
+        return this.angleWithSep(b.x, b.y);
+    },
+
+    // Find the angle of the two vectors, solving the formula for the cross product a x b = |a||b|sin(θ) for θ.
+    angleWithSep: function(x, y) {
+        return Math.atan2(
+            this.x * y - this.y * x,
+            this.x * x + this.y * y);
+    },
+
+    _matMult: function(m) {
+        var x = m[0] * this.x + m[1] * this.y,
+            y = m[2] * this.x + m[3] * this.y;
+        this.x = x;
+        this.y = y;
+        return this;
+    },
+
+    _add: function(p) {
+        this.x += p.x;
+        this.y += p.y;
+        return this;
+    },
+
+    _sub: function(p) {
+        this.x -= p.x;
+        this.y -= p.y;
+        return this;
+    },
+
+    _mult: function(k) {
+        this.x *= k;
+        this.y *= k;
+        return this;
+    },
+
+    _div: function(k) {
+        this.x /= k;
+        this.y /= k;
+        return this;
+    },
+
+    _unit: function() {
+        this._div(this.mag());
+        return this;
+    },
+
+    _perp: function() {
+        var y = this.y;
+        this.y = this.x;
+        this.x = -y;
+        return this;
+    },
+
+    _rotate: function(angle) {
+        var cos = Math.cos(angle),
+            sin = Math.sin(angle),
+            x = cos * this.x - sin * this.y,
+            y = sin * this.x + cos * this.y;
+        this.x = x;
+        this.y = y;
+        return this;
+    },
+
+    _round: function() {
+        this.x = Math.round(this.x);
+        this.y = Math.round(this.y);
+        return this;
     }
-    if (e + eBias >= 1) {
-      value += rt / c
-    } else {
-      value += rt * Math.pow(2, 1 - eBias)
+};
+
+// constructs Point from an array if necessary
+Point.convert = function (a) {
+    if (a instanceof Point) {
+        return a;
     }
-    if (value * c >= 2) {
-      e++
-      c /= 2
+    if (Array.isArray(a)) {
+        return new Point(a[0], a[1]);
     }
+    return a;
+};
 
-    if (e + eBias >= eMax) {
-      m = 0
-      e = eMax
-    } else if (e + eBias >= 1) {
-      m = (value * c - 1) * Math.pow(2, mLen)
-      e = e + eBias
-    } else {
-      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
-      e = 0
-    }
-  }
-
-  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
-
-  e = (e << mLen) | m
-  eLen += mLen
-  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
-
-  buffer[offset + i - d] |= s * 128
-}
-
-},{}],5:[function(require,module,exports){
+},{}],6:[function(require,module,exports){
 /*
  (c) 2015, Vladimir Agafonkin
  RBush, a JavaScript library for high-performance 2D spatial indexing of points and rectangles.
@@ -1393,12 +1526,12 @@ else window.rbush = rbush;
 
 })();
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
 module.exports.VectorTile = require('./lib/vectortile.js');
 module.exports.VectorTileFeature = require('./lib/vectortilefeature.js');
 module.exports.VectorTileLayer = require('./lib/vectortilelayer.js');
 
-},{"./lib/vectortile.js":7,"./lib/vectortilefeature.js":8,"./lib/vectortilelayer.js":9}],7:[function(require,module,exports){
+},{"./lib/vectortile.js":8,"./lib/vectortilefeature.js":9,"./lib/vectortilelayer.js":10}],8:[function(require,module,exports){
 'use strict';
 
 var VectorTileLayer = require('./vectortilelayer');
@@ -1417,7 +1550,7 @@ function readTile(tag, layers, pbf) {
 }
 
 
-},{"./vectortilelayer":9}],8:[function(require,module,exports){
+},{"./vectortilelayer":10}],9:[function(require,module,exports){
 'use strict';
 
 var Point = require('point-geometry');
@@ -1591,7 +1724,7 @@ VectorTileFeature.prototype.toGeoJSON = function(x, y, z) {
     return result;
 };
 
-},{"point-geometry":10}],9:[function(require,module,exports){
+},{"point-geometry":5}],10:[function(require,module,exports){
 'use strict';
 
 var VectorTileFeature = require('./vectortilefeature.js');
@@ -1654,140 +1787,7 @@ VectorTileLayer.prototype.feature = function(i) {
     return new VectorTileFeature(this._pbf, end, this.extent, this._keys, this._values);
 };
 
-},{"./vectortilefeature.js":8}],10:[function(require,module,exports){
-'use strict';
-
-module.exports = Point;
-
-function Point(x, y) {
-    this.x = x;
-    this.y = y;
-}
-
-Point.prototype = {
-    clone: function() { return new Point(this.x, this.y); },
-
-    add:     function(p) { return this.clone()._add(p);     },
-    sub:     function(p) { return this.clone()._sub(p);     },
-    mult:    function(k) { return this.clone()._mult(k);    },
-    div:     function(k) { return this.clone()._div(k);     },
-    rotate:  function(a) { return this.clone()._rotate(a);  },
-    matMult: function(m) { return this.clone()._matMult(m); },
-    unit:    function() { return this.clone()._unit(); },
-    perp:    function() { return this.clone()._perp(); },
-    round:   function() { return this.clone()._round(); },
-
-    mag: function() {
-        return Math.sqrt(this.x * this.x + this.y * this.y);
-    },
-
-    equals: function(p) {
-        return this.x === p.x &&
-               this.y === p.y;
-    },
-
-    dist: function(p) {
-        return Math.sqrt(this.distSqr(p));
-    },
-
-    distSqr: function(p) {
-        var dx = p.x - this.x,
-            dy = p.y - this.y;
-        return dx * dx + dy * dy;
-    },
-
-    angle: function() {
-        return Math.atan2(this.y, this.x);
-    },
-
-    angleTo: function(b) {
-        return Math.atan2(this.y - b.y, this.x - b.x);
-    },
-
-    angleWith: function(b) {
-        return this.angleWithSep(b.x, b.y);
-    },
-
-    // Find the angle of the two vectors, solving the formula for the cross product a x b = |a||b|sin(θ) for θ.
-    angleWithSep: function(x, y) {
-        return Math.atan2(
-            this.x * y - this.y * x,
-            this.x * x + this.y * y);
-    },
-
-    _matMult: function(m) {
-        var x = m[0] * this.x + m[1] * this.y,
-            y = m[2] * this.x + m[3] * this.y;
-        this.x = x;
-        this.y = y;
-        return this;
-    },
-
-    _add: function(p) {
-        this.x += p.x;
-        this.y += p.y;
-        return this;
-    },
-
-    _sub: function(p) {
-        this.x -= p.x;
-        this.y -= p.y;
-        return this;
-    },
-
-    _mult: function(k) {
-        this.x *= k;
-        this.y *= k;
-        return this;
-    },
-
-    _div: function(k) {
-        this.x /= k;
-        this.y /= k;
-        return this;
-    },
-
-    _unit: function() {
-        this._div(this.mag());
-        return this;
-    },
-
-    _perp: function() {
-        var y = this.y;
-        this.y = this.x;
-        this.x = -y;
-        return this;
-    },
-
-    _rotate: function(angle) {
-        var cos = Math.cos(angle),
-            sin = Math.sin(angle),
-            x = cos * this.x - sin * this.y,
-            y = sin * this.x + cos * this.y;
-        this.x = x;
-        this.y = y;
-        return this;
-    },
-
-    _round: function() {
-        this.x = Math.round(this.x);
-        this.y = Math.round(this.y);
-        return this;
-    }
-};
-
-// constructs Point from an array if necessary
-Point.convert = function (a) {
-    if (a instanceof Point) {
-        return a;
-    }
-    if (Array.isArray(a)) {
-        return new Point(a[0], a[1]);
-    }
-    return a;
-};
-
-},{}],11:[function(require,module,exports){
+},{"./vectortilefeature.js":9}],11:[function(require,module,exports){
 (function (global){
 var Protobuf = require('pbf'),
     VectorTile = require('vector-tile').VectorTile,
@@ -1798,19 +1798,11 @@ var Protobuf = require('pbf'),
 module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
         layers: [],
-        defaultTolerance: 100,
-        isDuplicate: function(f, context) {
-            var osmId = f.properties.osm_id,
-                name = f.properties.name,
-                isDupe = context[osmId] || context[name];
-
-            if (!isDupe) {
-                context[osmId] = true;
-                context[name] = true;
-            }
-
-            return isDupe;
-        }
+        defaultRadius: 20,
+        featureId: function(f) {
+            return f.properties.osm_id;
+        },
+        lazy: true
     },
 
     initialize: function(tileUrl, options) {
@@ -1818,48 +1810,85 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, tolerance) {
+    query: function(latLng, cb, context, radius) {
         if (!this._map) return;
 
-        tolerance = tolerance || this.options.defaultTolerance;
+        radius = radius || this.options.defaultradius;
 
-        var p = this._map.latLngToLayerPoint(latLng),
-            sqDistToP = function(s) {
+        var p = this._map.project(latLng);
+
+        if (this.options.lazy) {
+            this._loadTiles(p, radius, L.bind(function(err) {
+                if (err) {
+                    return cb(err);
+                }
+                this._query(p, radius, cb, context);
+            }, this));
+            return this;
+        }
+
+        this._query(p, radius, cb, context);
+        return this;
+    },
+
+    _query: function(p, radius, cb, context) {
+        var sqDistToP = function(s) {
                 var dx = s[0] - p.x,
                     dy = s[1] - p.y;
                 return dx * dx + dy * dy;
             },
-            halfT = tolerance / 2,
-            search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
+            sqTol = radius * radius,
+            search = this._bush.search([p.x - radius, p.y - radius, p.x + radius, p.y + radius]),
             results = [],
-            context = {},
-            isDuplicate = this.options.isDuplicate,
-            i,
-            f;
+            i;
 
         search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
 
         for (i = 0; i < search.length; i++) {
-            f = search[i][4];
-            if (!isDuplicate(f, context)) {
-                results.push(f);
+            if (sqDistToP(search[i]) < sqTol) {
+                results.push(search[i][4]);
             }
         }
 
-        return results;
+        cb.call(context, null, results);
     },
 
-    _addTile: function(tilePoint) {
-        var key = tilePoint.x + ':' + tilePoint.y,
-            tile = { datum: null, processed: false };
+    _loadTiles: function(p, radius, cb) {
+        var se = p.add([radius, radius]),
+            nw = p.subtract([radius, radius]),
+            tileBounds = L.bounds(
+                nw.divideBy(this.options.tileSize)._floor(),
+                se.divideBy(this.options.tileSize)._floor());
 
-        if (!this._tiles[key]) {
-            this._tiles[key] = tile;
-            this._loadTile(tile, tilePoint);
+        this._forceLoadTiles = true;
+        this._addTilesFromCenterOut(tileBounds);
+        this._forceLoadTiles = false;
+
+        if (this._tilesToLoad) {
+            this.once('load', function() { cb(); });
+        } else {
+            cb();
         }
     },
 
-    _loadTile: function(tile, tilePoint) {
+    _addTile: function(tilePoint, fragment, cb) {
+        var key = this._tileKey(tilePoint),
+            tile = { datum: null, processed: false };
+
+        if (!this._tiles[key] && (!this.options.lazy || this._forceLoadTiles)) {
+            this._tiles[key] = tile;
+            return this._loadTile(tile, tilePoint, cb);
+        } else {
+            this._tileLoaded();
+            return cb && cb();
+        }
+    },
+
+    _tileKey: function(tilePoint) {
+        return tilePoint.x + ':' + tilePoint.y;
+    },
+
+    _loadTile: function(tile, tilePoint, cb) {
         var url,
             request;
 
@@ -1872,32 +1901,32 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
+                this._tileLoaded();
+                return cb && cb(err);
             }
 
-            this._tileLoaded(tile, tilePoint, new Uint8Array(data.response));
+            this._parseTile(tile, tilePoint, new Uint8Array(data.response));
+            this._tileLoaded();
+            return cb && cb();
         }, this), true);
         request.responseType = 'arraybuffer';
     },
 
     _reset: function() {
         L.TileLayer.prototype._reset.call(this);
+        this._features = {};
         this._bush.clear();
         this.fire('featurescleared');
     },
 
-    _tileLoaded: function(tile, tilePoint, data) {
+    _parseTile: function(tile, tilePoint, data) {
         var x = tilePoint.x,
             y = tilePoint.y,
             z = tilePoint.z,
             vectorTile = new VectorTile(new Protobuf(data)),
-            filter = this.options.filter,
             i,
-            j,
             layerName,
-            layer,
-            f,
-            p,
-            geojson;
+            layer;
 
         tile.processed = true;
 
@@ -1905,30 +1934,50 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             layerName = this.options.layers[i];
             layer = vectorTile.layers[layerName];
             if (layer) {
-                for (j = 0; j < layer.length; j++) {
-                    f = layer.feature(j);
-                    if (!filter || filter(f)) {
-                        geojson = f.toGeoJSON(x, y, z);
-                        if (geojson.geometry.type !== 'Point') {
-                            this.fire('featureerror', {
-                                tilepoint: tilePoint,
-                                error: 'Feature does not have a point geometry',
-                                feature: f
-                            });
-                            continue;
-                        }
-                        p = this._map.latLngToLayerPoint([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
-                        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
-                        this.fire('featureadded', {
-                            feature: geojson
-                        });
-                    }
+                this._handleLayer(layer, x, y, z);
+            }
+        }
+    },
+
+    _handleLayer: function(layer, x, y, z) {
+        var filter = this.options.filter,
+            j,
+            f,
+            id;
+
+        for (j = 0; j < layer.length; j++) {
+            f = layer.feature(j);
+            if (!filter || filter(f)) {
+                id = this.options.featureId(f);
+                if (!this._features[id]) {
+                    this._features[id] = true;
+                    this._handleFeature(f.toGeoJSON(x, y, z));
                 }
             }
         }
+    },
+
+    _handleFeature: function(geojson) {
+        var p;
+
+        if (geojson.geometry.type !== 'Point') {
+            this.fire('featureerror', {
+                error: 'Feature does not have a point geometry',
+                feature: f
+            });
+            return;
+        }
+        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
+        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
+        this.fire('featureadded', {
+            feature: geojson
+        });
     }
 });
 
+L.tileLayer.underneath = function(tileUrl, options) {
+    return new L.TileLayer.Underneath(tileUrl, options);
+};
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"corslite":1,"pbf":3,"rbush":5,"vector-tile":6}]},{},[11]);
+},{"corslite":1,"pbf":4,"rbush":6,"vector-tile":7}]},{},[11]);

@@ -14,43 +14,45 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-var pois = new L.TileLayer.Underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
+var pois = L.tileLayer.underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
             '{z}/{x}/{y}.vector.pbf?access_token=pk.eyJ1IjoiZG90bmV0bWVudG9yIiwiYSI6ImNpZXpwOXZ6azAwcDNzdmx0dDZqcmNkM3MifQ.FEM3zoH8orR9Pwwgr5j-5g', {
-                layers: ['poi_label']
+                layers: ['poi_label'],
+                lazy: true
             })
-    /*.on('featureadded', function(e) {
-        featureLayer.addData(e.feature);
-    })
-    .on('featurescleared', function() {
-        featureLayer.clearLayers();
-    })*/
     .addTo(map);
 
 map.on('click', function(e) {
     var results = [],
-        tolerance = 3,
-        content = 'Nearby: <ul>';
+        content = '<h2>Nearby</h2> <ul>',
+        showResults = function(results) {
+            featureLayer.addData(results);
+            for (var i = 0; i < results.length; i++) {
+                var f = results[i],
+                    c = f.geometry.coordinates;
+                content += '<li><span class="maki-icon ' +
+                    f.properties.maki + '"></span>' +
+                    f.properties.name +
+                    '</li>';
+            }
+
+            content += '</ul>';
+
+            L.popup()
+                .setLatLng(e.latlng)
+                .setContent(content)
+                .openOn(map);
+        };
 
     featureLayer.clearLayers();
-
-    while (results.length === 0 && tolerance < 100) {
-        results = pois.query(e.latlng, tolerance);
-        tolerance *= 2;
-    }
-
-    if (results.length > 0) {
-        featureLayer.addData(results);
-        for (var i = 0; i < 5 && i < results.length; i++) {
-            var r = results[i],
-                c = r.geometry.coordinates;
-            content += '<li><span class="maki-icon ' + r.properties.maki + '"></span>' + r.properties.name + '</li>';
+    pois.query(e.latlng, function(err, results) {
+        if (results.length > 0) {
+            results = results.splice(0, 5);
+            showResults(results);
         }
-
-        content += '</ul>';
-
-        L.popup()
-            .setLatLng(e.latlng)
-            .setContent(content)
-            .openOn(map);
-    }
+    }, null, 50);
 });
+
+L.popup()
+    .setLatLng(map.getCenter())
+    .setContent('<h2>Leaflet Underneath</h2>Click the map to find features near that location!')
+    .openOn(map);
