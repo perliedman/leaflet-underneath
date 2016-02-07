@@ -7,7 +7,7 @@ var Protobuf = require('pbf'),
 module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
         layers: [],
-        defaultTolerance: 100,
+        defaultRadius: 100,
         featureId: function(f) {
             return f.properties.osm_id;
         },
@@ -19,53 +19,52 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, tolerance, cb, context) {
+    query: function(latLng, radius, cb, context) {
         if (!this._map) return;
 
-        tolerance = tolerance || this.options.defaultTolerance;
+        radius = radius || this.options.defaultradius;
 
         var p = this._map.project(latLng);
 
         if (this.options.lazy) {
-            this._loadTiles(p, tolerance, L.bind(function(err) {
+            this._loadTiles(p, radius, L.bind(function(err) {
                 if (err) {
                     return cb(err);
                 }
-                this._query(p, tolerance, cb, context);
+                this._query(p, radius, cb, context);
             }, this));
             return this;
         }
 
-        this._query(p, tolerance, cb, context);
+        this._query(p, radius, cb, context);
         return this;
     },
 
-    _query: function(p, tolerance, cb, context) {
+    _query: function(p, radius, cb, context) {
         var sqDistToP = function(s) {
                 var dx = s[0] - p.x,
                     dy = s[1] - p.y;
                 return dx * dx + dy * dy;
             },
-            halfT = tolerance / 2,
-            search = this._bush.search([p.x - halfT, p.y - halfT, p.x + halfT, p.y + halfT]),
+            sqTol = radius * radius,
+            search = this._bush.search([p.x - radius, p.y - radius, p.x + radius, p.y + radius]),
             results = [],
-            i,
-            f;
+            i;
 
         search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
 
         for (i = 0; i < search.length; i++) {
-            f = search[i][4];
-            results.push(f);
+            if (sqDistToP(search[i]) < sqTol) {
+                results.push(search[i][4]);
+            }
         }
 
         cb.call(context, null, results);
     },
 
-    _loadTiles: function(p, tolerance, cb) {
-        var halfT = tolerance / 2,
-            se = p.add([halfT, halfT]),
-            nw = p.subtract([halfT, halfT]),
+    _loadTiles: function(p, radius, cb) {
+        var se = p.add([radius, radius]),
+            nw = p.subtract([radius, radius]),
             tileBounds = L.bounds(
                 nw.divideBy(this.options.tileSize)._floor(),
                 se.divideBy(this.options.tileSize)._floor());
