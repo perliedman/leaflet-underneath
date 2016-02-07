@@ -19,23 +19,20 @@ var pois = new L.TileLayer.Underneath('http://{s}.tiles.mapbox.com/v4/mapbox.map
                 layers: ['poi_label'],
                 lazy: true
             })
-    /*.on('featureadded', function(e) {
-        featureLayer.addData(e.feature);
-    })
-    .on('featurescleared', function() {
-        featureLayer.clearLayers();
-    })*/
     .addTo(map);
 
 map.on('click', function(e) {
     var results = [],
-        content = 'Nearby: <ul>',
+        content = '<h2>Nearby</h2> <ul>',
         showResults = function(results) {
             featureLayer.addData(results);
             for (var i = 0; i < results.length; i++) {
-                var r = results[i],
-                    c = r.geometry.coordinates;
-                content += '<li><span class="maki-icon ' + r.properties.maki + '"></span>' + r.properties.name + '</li>';
+                var f = results[i],
+                    c = f.geometry.coordinates;
+                content += '<li><span class="maki-icon ' +
+                    f.properties.maki + '"></span>' +
+                    f.properties.name +
+                    '</li>';
             }
 
             content += '</ul>';
@@ -47,10 +44,15 @@ map.on('click', function(e) {
         };
 
     featureLayer.clearLayers();
-    pois.query(e.latlng, 100, function(err, results) {
+    pois.query(e.latlng, 50, function(err, results) {
         if (results.length > 0) {
             results = results.splice(0, 5);
             showResults(results);
         }
     });
 });
+
+L.popup()
+    .setLatLng(map.getCenter())
+    .setContent('<h2>Leaflet Underneath</h2>Click the map to find features near that location!')
+    .openOn(map);
