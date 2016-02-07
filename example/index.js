@@ -14,7 +14,7 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-var pois = new L.TileLayer.Underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
+var pois = L.tileLayer.underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
             '{z}/{x}/{y}.vector.pbf?access_token=pk.eyJ1IjoiZG90bmV0bWVudG9yIiwiYSI6ImNpZXpwOXZ6azAwcDNzdmx0dDZqcmNkM3MifQ.FEM3zoH8orR9Pwwgr5j-5g', {
                 layers: ['poi_label'],
                 lazy: true
@@ -44,12 +44,12 @@ map.on('click', function(e) {
         };
 
     featureLayer.clearLayers();
-    pois.query(e.latlng, 50, function(err, results) {
+    pois.query(e.latlng, function(err, results) {
         if (results.length > 0) {
             results = results.splice(0, 5);
             showResults(results);
         }
-    });
+    }, null, 50);
 });
 
 L.popup()

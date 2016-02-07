@@ -7,7 +7,7 @@ var Protobuf = require('pbf'),
 module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
         layers: [],
-        defaultRadius: 100,
+        defaultRadius: 20,
         featureId: function(f) {
             return f.properties.osm_id;
         },
@@ -19,7 +19,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, radius, cb, context) {
+    query: function(latLng, cb, context, radius) {
         if (!this._map) return;
 
         radius = radius || this.options.defaultradius;
@@ -184,3 +184,6 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     }
 });
 
+L.tileLayer.underneath = function(tileUrl, options) {
+    return new L.TileLayer.Underneath(tileUrl, options);
+};
