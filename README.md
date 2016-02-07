@@ -57,4 +57,4 @@ Option                 | Type          | Default              | Description
 
 Method                          | Returns                   | Description
 --------------------------------|---------------------------|--------------------------
-`query(<`[`L.LatLng](http://leafletjs.com/reference.html#latlng)`> latLng, <Function> callback, <Object> context, <Number> radius?)` | `this` | Asynchronously queries for features near `latLng`; `callback` will be called with features within `radius` pixels of the coordinate
+`query(<`[`L.LatLng`](http://leafletjs.com/reference.html#latlng)`> latLng, <Function> callback, <Object> context, <Number> radius?)` | `this` | Asynchronously queries for features near `latLng`; `callback` will be called with features within `radius` pixels of the coordinate
