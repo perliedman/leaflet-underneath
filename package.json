@@ -10,6 +10,7 @@
   "main": "src/index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
+    "prepublish": "./scripts/build.sh",
     "start": "./scripts/build.sh && ./scripts/start.sh"
   },
   "author": "Per Liedman <per@liedman.net>",
@@ -27,6 +28,7 @@
   "devDependencies": {
     "browserify": "^13.0.0",
     "browserify-shim": "^3.8.12",
+    "uglify-js": "^2.6.1",
     "watchify": "^3.7.0"
   }
 }
