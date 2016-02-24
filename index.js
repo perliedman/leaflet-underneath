@@ -54,5 +54,6 @@ map.on('click', function(e) {
 
 L.popup()
     .setLatLng(map.getCenter())
-    .setContent('<h2>Leaflet Underneath</h2>Click the map to find features near that location!')
+    .setContent('<h2>Leaflet Underneath</h2><p>Click the map to find features near that location!</p>' +
+        '<p><a href="https://github.com/perliedman/leaflet-underneath">Fork me on GitHub!</a></p>')
     .openOn(map);
