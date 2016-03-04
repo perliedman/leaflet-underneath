@@ -11,7 +11,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         featureId: function(f) {
             return f.properties.osm_id;
         },
-        lazy: true
+        lazy: true,
+        zoomIn: 0
     },
 
     initialize: function(tileUrl, options) {
@@ -22,9 +23,12 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     query: function(latLng, cb, context, radius) {
         if (!this._map) return;
 
-        radius = radius || this.options.defaultradius;
+        var z = this._map.getZoom() + this.options.zoomIn;
 
-        var p = this._map.project(latLng);
+        radius = radius || this.options.defaultradius;
+        radius *= this._map.getZoomScale(z);
+
+        var p = this._map.project(latLng, z);
 
         if (this.options.lazy) {
             this._loadTiles(p, radius, L.bind(function(err) {
@@ -78,6 +82,16 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         } else {
             cb();
         }
+    },
+
+    _getZoomForUrl: function() {
+        return L.TileLayer.prototype._getZoomForUrl.call(this) + this.options.zoomIn;
+    },
+
+    _getWrapTileNum: function () {
+        var crs = this._map.options.crs,
+            size = crs.getSize(this._map.getZoom() + this.options.zoomIn);
+        return size.divideBy(this._getTileSize())._floor();
     },
 
     _addTile: function(tilePoint, fragment, cb) {
@@ -167,7 +181,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     },
 
     _handleFeature: function(geojson) {
-        var p;
+        var z = this._map.getZoom() + this.options.zoomIn,
+            p;
 
         if (geojson.geometry.type !== 'Point') {
             this.fire('featureerror', {
@@ -176,7 +191,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             });
             return;
         }
-        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]]);
+        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]], z);
         this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
         this.fire('featureadded', {
             feature: geojson
