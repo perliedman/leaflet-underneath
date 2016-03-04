@@ -52,6 +52,7 @@ Option                 | Type          | Default              | Description
 `defaultRadius`        | `Number`      | `20`                 | Default number of pixels search radius
 `featureId`            | `Function`    |                      | Function that returns a unique feature id; used to filter out duplicates. Default returns a features `osm_id`property
 `lazy`                 | `Boolean`     | `true`               | If lazy, only tiles that are queried will be loaded. Otherwise, all tiles will be loaded, like a normal tile layer.
+`zoomIn`               | `Number`      | `0`                  | Zoom in relative to the map's current zoom level when making a query; used to get more or less detailed results than current zoom would give
 
 #### Methods
 
