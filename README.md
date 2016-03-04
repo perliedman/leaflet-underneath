@@ -49,7 +49,7 @@ In addition to Leaflet's built-in [TileLayer options](http://leafletjs.com/refer
 Option                 | Type          | Default              | Description
 -----------------------|---------------|----------------------|----------------------------
 `layers`               | `String[]`    | `[]`                 | Names of layers to include in search
-`defaultRadius`        | `Number`      | `20`                 | Default umber of pixels search radius
+`defaultRadius`        | `Number`      | `20`                 | Default number of pixels search radius
 `featureId`            | `Function`    |                      | Function that returns a unique feature id; used to filter out duplicates. Default returns a features `osm_id`property
 `lazy`                 | `Boolean`     | `true`               | If lazy, only tiles that are queried will be loaded. Otherwise, all tiles will be loaded, like a normal tile layer.
 
