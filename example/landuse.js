@@ -13,7 +13,7 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 var pois = L.tileLayer.underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
-            '{z}/{x}/{y}.vector.pbf?access_token=pk.eyJ1IjoibGllZG1hbiIsImEiOiJjaWtjYjh5cGcwMDNhdm5sdmoycmgzY3drIn0.CZCSz1N53qWOVB0j2A_5pg', {
+            '{z}/{x}/{y}.vector.pbf?access_token=<your-token-here>', {
                 layers: ['landuse'],
                 lazy: true,
                 zoomIn: 0,
