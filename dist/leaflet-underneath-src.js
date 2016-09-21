@@ -771,6 +771,139 @@ exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
 }
 
 },{}],5:[function(require,module,exports){
+'use strict';
+
+module.exports = Point;
+
+function Point(x, y) {
+    this.x = x;
+    this.y = y;
+}
+
+Point.prototype = {
+    clone: function() { return new Point(this.x, this.y); },
+
+    add:     function(p) { return this.clone()._add(p);     },
+    sub:     function(p) { return this.clone()._sub(p);     },
+    mult:    function(k) { return this.clone()._mult(k);    },
+    div:     function(k) { return this.clone()._div(k);     },
+    rotate:  function(a) { return this.clone()._rotate(a);  },
+    matMult: function(m) { return this.clone()._matMult(m); },
+    unit:    function() { return this.clone()._unit(); },
+    perp:    function() { return this.clone()._perp(); },
+    round:   function() { return this.clone()._round(); },
+
+    mag: function() {
+        return Math.sqrt(this.x * this.x + this.y * this.y);
+    },
+
+    equals: function(p) {
+        return this.x === p.x &&
+               this.y === p.y;
+    },
+
+    dist: function(p) {
+        return Math.sqrt(this.distSqr(p));
+    },
+
+    distSqr: function(p) {
+        var dx = p.x - this.x,
+            dy = p.y - this.y;
+        return dx * dx + dy * dy;
+    },
+
+    angle: function() {
+        return Math.atan2(this.y, this.x);
+    },
+
+    angleTo: function(b) {
+        return Math.atan2(this.y - b.y, this.x - b.x);
+    },
+
+    angleWith: function(b) {
+        return this.angleWithSep(b.x, b.y);
+    },
+
+    // Find the angle of the two vectors, solving the formula for the cross product a x b = |a||b|sin(θ) for θ.
+    angleWithSep: function(x, y) {
+        return Math.atan2(
+            this.x * y - this.y * x,
+            this.x * x + this.y * y);
+    },
+
+    _matMult: function(m) {
+        var x = m[0] * this.x + m[1] * this.y,
+            y = m[2] * this.x + m[3] * this.y;
+        this.x = x;
+        this.y = y;
+        return this;
+    },
+
+    _add: function(p) {
+        this.x += p.x;
+        this.y += p.y;
+        return this;
+    },
+
+    _sub: function(p) {
+        this.x -= p.x;
+        this.y -= p.y;
+        return this;
+    },
+
+    _mult: function(k) {
+        this.x *= k;
+        this.y *= k;
+        return this;
+    },
+
+    _div: function(k) {
+        this.x /= k;
+        this.y /= k;
+        return this;
+    },
+
+    _unit: function() {
+        this._div(this.mag());
+        return this;
+    },
+
+    _perp: function() {
+        var y = this.y;
+        this.y = this.x;
+        this.x = -y;
+        return this;
+    },
+
+    _rotate: function(angle) {
+        var cos = Math.cos(angle),
+            sin = Math.sin(angle),
+            x = cos * this.x - sin * this.y,
+            y = sin * this.x + cos * this.y;
+        this.x = x;
+        this.y = y;
+        return this;
+    },
+
+    _round: function() {
+        this.x = Math.round(this.x);
+        this.y = Math.round(this.y);
+        return this;
+    }
+};
+
+// constructs Point from an array if necessary
+Point.convert = function (a) {
+    if (a instanceof Point) {
+        return a;
+    }
+    if (Array.isArray(a)) {
+        return new Point(a[0], a[1]);
+    }
+    return a;
+};
+
+},{}],6:[function(require,module,exports){
 /*
  (c) 2015, Vladimir Agafonkin
  RBush, a JavaScript library for high-performance 2D spatial indexing of points and rectangles.
@@ -1393,12 +1526,505 @@ else window.rbush = rbush;
 
 })();
 
-},{}],6:[function(require,module,exports){
+},{}],7:[function(require,module,exports){
+var each = require('turf-meta').coordEach;
+
+/**
+ * Takes any {@link GeoJSON} object, calculates the extent of all input features, and returns a bounding box.
+ *
+ * @module turf/extent
+ * @category measurement
+ * @param {GeoJSON} input any valid GeoJSON Object
+ * @return {Array<number>} the bounding box of `input` given
+ * as an array in WSEN order (west, south, east, north)
+ * @example
+ * var input = {
+ *   "type": "FeatureCollection",
+ *   "features": [
+ *     {
+ *       "type": "Feature",
+ *       "properties": {},
+ *       "geometry": {
+ *         "type": "Point",
+ *         "coordinates": [114.175329, 22.2524]
+ *       }
+ *     }, {
+ *       "type": "Feature",
+ *       "properties": {},
+ *       "geometry": {
+ *         "type": "Point",
+ *         "coordinates": [114.170007, 22.267969]
+ *       }
+ *     }, {
+ *       "type": "Feature",
+ *       "properties": {},
+ *       "geometry": {
+ *         "type": "Point",
+ *         "coordinates": [114.200649, 22.274641]
+ *       }
+ *     }, {
+ *       "type": "Feature",
+ *       "properties": {},
+ *       "geometry": {
+ *         "type": "Point",
+ *         "coordinates": [114.186744, 22.265745]
+ *       }
+ *     }
+ *   ]
+ * };
+ *
+ * var bbox = turf.extent(input);
+ *
+ * var bboxPolygon = turf.bboxPolygon(bbox);
+ *
+ * var resultFeatures = input.features.concat(bboxPolygon);
+ * var result = {
+ *   "type": "FeatureCollection",
+ *   "features": resultFeatures
+ * };
+ *
+ * //=result
+ */
+module.exports = function(layer) {
+    var extent = [Infinity, Infinity, -Infinity, -Infinity];
+    each(layer, function(coord) {
+      if (extent[0] > coord[0]) extent[0] = coord[0];
+      if (extent[1] > coord[1]) extent[1] = coord[1];
+      if (extent[2] < coord[0]) extent[2] = coord[0];
+      if (extent[3] < coord[1]) extent[3] = coord[1];
+    });
+    return extent;
+};
+
+},{"turf-meta":10}],8:[function(require,module,exports){
+var invariant = require('turf-invariant');
+
+// http://en.wikipedia.org/wiki/Even%E2%80%93odd_rule
+// modified from: https://github.com/substack/point-in-polygon/blob/master/index.js
+// which was modified from http://www.ecse.rpi.edu/Homepages/wrf/Research/Short_Notes/pnpoly.html
+
+/**
+ * Takes a {@link Point} and a {@link Polygon} or {@link MultiPolygon} and determines if the point resides inside the polygon. The polygon can
+ * be convex or concave. The function accounts for holes.
+ *
+ * @name inside
+ * @param {Feature<Point>} point input point
+ * @param {Feature<(Polygon|MultiPolygon)>} polygon input polygon or multipolygon
+ * @return {Boolean} `true` if the Point is inside the Polygon; `false` if the Point is not inside the Polygon
+ * @example
+ * var pt1 = {
+ *   "type": "Feature",
+ *   "properties": {
+ *     "marker-color": "#f00"
+ *   },
+ *   "geometry": {
+ *     "type": "Point",
+ *     "coordinates": [-111.467285, 40.75766]
+ *   }
+ * };
+ * var pt2 = {
+ *   "type": "Feature",
+ *   "properties": {
+ *     "marker-color": "#0f0"
+ *   },
+ *   "geometry": {
+ *     "type": "Point",
+ *     "coordinates": [-111.873779, 40.647303]
+ *   }
+ * };
+ * var poly = {
+ *   "type": "Feature",
+ *   "properties": {},
+ *   "geometry": {
+ *     "type": "Polygon",
+ *     "coordinates": [[
+ *       [-112.074279, 40.52215],
+ *       [-112.074279, 40.853293],
+ *       [-111.610107, 40.853293],
+ *       [-111.610107, 40.52215],
+ *       [-112.074279, 40.52215]
+ *     ]]
+ *   }
+ * };
+ *
+ * var features = {
+ *   "type": "FeatureCollection",
+ *   "features": [pt1, pt2, poly]
+ * };
+ *
+ * //=features
+ *
+ * var isInside1 = turf.inside(pt1, poly);
+ * //=isInside1
+ *
+ * var isInside2 = turf.inside(pt2, poly);
+ * //=isInside2
+ */
+module.exports = function input(point, polygon) {
+    var pt = invariant.getCoord(point);
+    var polys = polygon.geometry.coordinates;
+    // normalize to multipolygon
+    if (polygon.geometry.type === 'Polygon') polys = [polys];
+
+    for (var i = 0, insidePoly = false; i < polys.length && !insidePoly; i++) {
+        // check if it is in the outer ring first
+        if (inRing(pt, polys[i][0])) {
+            var inHole = false;
+            var k = 1;
+            // check for the point in any of the holes
+            while (k < polys[i].length && !inHole) {
+                if (inRing(pt, polys[i][k])) {
+                    inHole = true;
+                }
+                k++;
+            }
+            if (!inHole) insidePoly = true;
+        }
+    }
+    return insidePoly;
+};
+
+// pt is [x,y] and ring is [[x,y], [x,y],..]
+function inRing(pt, ring) {
+    var isInside = false;
+    for (var i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+        var xi = ring[i][0], yi = ring[i][1];
+        var xj = ring[j][0], yj = ring[j][1];
+        var intersect = ((yi > pt[1]) !== (yj > pt[1])) &&
+        (pt[0] < (xj - xi) * (pt[1] - yi) / (yj - yi) + xi);
+        if (intersect) isInside = !isInside;
+    }
+    return isInside;
+}
+
+},{"turf-invariant":9}],9:[function(require,module,exports){
+/**
+ * Unwrap a coordinate from a Feature with a Point geometry, a Point
+ * geometry, or a single coordinate.
+ *
+ * @param {*} obj any value
+ * @returns {Array<number>} a coordinate
+ */
+function getCoord(obj) {
+    if (Array.isArray(obj) &&
+        typeof obj[0] === 'number' &&
+        typeof obj[1] === 'number') {
+        return obj;
+    } else if (obj) {
+        if (obj.type === 'Feature' &&
+            obj.geometry &&
+            obj.geometry.type === 'Point' &&
+            Array.isArray(obj.geometry.coordinates)) {
+            return obj.geometry.coordinates;
+        } else if (obj.type === 'Point' &&
+            Array.isArray(obj.coordinates)) {
+            return obj.coordinates;
+        }
+    }
+    throw new Error('A coordinate, feature, or point geometry is required');
+}
+
+/**
+ * Enforce expectations about types of GeoJSON objects for Turf.
+ *
+ * @alias geojsonType
+ * @param {GeoJSON} value any GeoJSON object
+ * @param {string} type expected GeoJSON type
+ * @param {string} name name of calling function
+ * @throws {Error} if value is not the expected type.
+ */
+function geojsonType(value, type, name) {
+    if (!type || !name) throw new Error('type and name required');
+
+    if (!value || value.type !== type) {
+        throw new Error('Invalid input to ' + name + ': must be a ' + type + ', given ' + value.type);
+    }
+}
+
+/**
+ * Enforce expectations about types of {@link Feature} inputs for Turf.
+ * Internally this uses {@link geojsonType} to judge geometry types.
+ *
+ * @alias featureOf
+ * @param {Feature} feature a feature with an expected geometry type
+ * @param {string} type expected GeoJSON type
+ * @param {string} name name of calling function
+ * @throws {Error} error if value is not the expected type.
+ */
+function featureOf(feature, type, name) {
+    if (!name) throw new Error('.featureOf() requires a name');
+    if (!feature || feature.type !== 'Feature' || !feature.geometry) {
+        throw new Error('Invalid input to ' + name + ', Feature with geometry required');
+    }
+    if (!feature.geometry || feature.geometry.type !== type) {
+        throw new Error('Invalid input to ' + name + ': must be a ' + type + ', given ' + feature.geometry.type);
+    }
+}
+
+/**
+ * Enforce expectations about types of {@link FeatureCollection} inputs for Turf.
+ * Internally this uses {@link geojsonType} to judge geometry types.
+ *
+ * @alias collectionOf
+ * @param {FeatureCollection} featurecollection a featurecollection for which features will be judged
+ * @param {string} type expected GeoJSON type
+ * @param {string} name name of calling function
+ * @throws {Error} if value is not the expected type.
+ */
+function collectionOf(featurecollection, type, name) {
+    if (!name) throw new Error('.collectionOf() requires a name');
+    if (!featurecollection || featurecollection.type !== 'FeatureCollection') {
+        throw new Error('Invalid input to ' + name + ', FeatureCollection required');
+    }
+    for (var i = 0; i < featurecollection.features.length; i++) {
+        var feature = featurecollection.features[i];
+        if (!feature || feature.type !== 'Feature' || !feature.geometry) {
+            throw new Error('Invalid input to ' + name + ', Feature with geometry required');
+        }
+        if (!feature.geometry || feature.geometry.type !== type) {
+            throw new Error('Invalid input to ' + name + ': must be a ' + type + ', given ' + feature.geometry.type);
+        }
+    }
+}
+
+module.exports.geojsonType = geojsonType;
+module.exports.collectionOf = collectionOf;
+module.exports.featureOf = featureOf;
+module.exports.getCoord = getCoord;
+
+},{}],10:[function(require,module,exports){
+/**
+ * Lazily iterate over coordinates in any GeoJSON object, similar to
+ * Array.forEach.
+ *
+ * @param {Object} layer any GeoJSON object
+ * @param {Function} callback a method that takes (value)
+ * @param {boolean=} excludeWrapCoord whether or not to include
+ * the final coordinate of LinearRings that wraps the ring in its iteration.
+ * @example
+ * var point = { type: 'Point', coordinates: [0, 0] };
+ * coordEach(point, function(coords) {
+ *   // coords is equal to [0, 0]
+ * });
+ */
+function coordEach(layer, callback, excludeWrapCoord) {
+  var i, j, k, g, geometry, stopG, coords,
+    geometryMaybeCollection,
+    wrapShrink = 0,
+    isGeometryCollection,
+    isFeatureCollection = layer.type === 'FeatureCollection',
+    isFeature = layer.type === 'Feature',
+    stop = isFeatureCollection ? layer.features.length : 1;
+
+  // This logic may look a little weird. The reason why it is that way
+  // is because it's trying to be fast. GeoJSON supports multiple kinds
+  // of objects at its root: FeatureCollection, Features, Geometries.
+  // This function has the responsibility of handling all of them, and that
+  // means that some of the `for` loops you see below actually just don't apply
+  // to certain inputs. For instance, if you give this just a
+  // Point geometry, then both loops are short-circuited and all we do
+  // is gradually rename the input until it's called 'geometry'.
+  //
+  // This also aims to allocate as few resources as possible: just a
+  // few numbers and booleans, rather than any temporary arrays as would
+  // be required with the normalization approach.
+  for (i = 0; i < stop; i++) {
+
+    geometryMaybeCollection = (isFeatureCollection ? layer.features[i].geometry :
+        (isFeature ? layer.geometry : layer));
+    isGeometryCollection = geometryMaybeCollection.type === 'GeometryCollection';
+    stopG = isGeometryCollection ? geometryMaybeCollection.geometries.length : 1;
+
+    for (g = 0; g < stopG; g++) {
+
+      geometry = isGeometryCollection ?
+          geometryMaybeCollection.geometries[g] : geometryMaybeCollection;
+      coords = geometry.coordinates;
+
+      wrapShrink = (excludeWrapCoord &&
+        (geometry.type === 'Polygon' || geometry.type === 'MultiPolygon')) ?
+        1 : 0;
+
+      if (geometry.type === 'Point') {
+        callback(coords);
+      } else if (geometry.type === 'LineString' || geometry.type === 'MultiPoint') {
+        for (j = 0; j < coords.length; j++) callback(coords[j]);
+      } else if (geometry.type === 'Polygon' || geometry.type === 'MultiLineString') {
+        for (j = 0; j < coords.length; j++)
+          for (k = 0; k < coords[j].length - wrapShrink; k++)
+            callback(coords[j][k]);
+      } else if (geometry.type === 'MultiPolygon') {
+        for (j = 0; j < coords.length; j++)
+          for (k = 0; k < coords[j].length; k++)
+            for (l = 0; l < coords[j][k].length - wrapShrink; l++)
+              callback(coords[j][k][l]);
+      } else {
+        throw new Error('Unknown Geometry Type');
+      }
+    }
+  }
+}
+module.exports.coordEach = coordEach;
+
+/**
+ * Lazily reduce coordinates in any GeoJSON object into a single value,
+ * similar to how Array.reduce works. However, in this case we lazily run
+ * the reduction, so an array of all coordinates is unnecessary.
+ *
+ * @param {Object} layer any GeoJSON object
+ * @param {Function} callback a method that takes (memo, value) and returns
+ * a new memo
+ * @param {boolean=} excludeWrapCoord whether or not to include
+ * the final coordinate of LinearRings that wraps the ring in its iteration.
+ * @param {*} memo the starting value of memo: can be any type.
+ */
+function coordReduce(layer, callback, memo, excludeWrapCoord) {
+  coordEach(layer, function(coord) {
+    memo = callback(memo, coord);
+  }, excludeWrapCoord);
+  return memo;
+}
+module.exports.coordReduce = coordReduce;
+
+/**
+ * Lazily iterate over property objects in any GeoJSON object, similar to
+ * Array.forEach.
+ *
+ * @param {Object} layer any GeoJSON object
+ * @param {Function} callback a method that takes (value)
+ * @example
+ * var point = { type: 'Feature', geometry: null, properties: { foo: 1 } };
+ * propEach(point, function(props) {
+ *   // props is equal to { foo: 1}
+ * });
+ */
+function propEach(layer, callback) {
+  var i;
+  switch (layer.type) {
+      case 'FeatureCollection':
+        features = layer.features;
+        for (i = 0; i < layer.features.length; i++) {
+            callback(layer.features[i].properties);
+        }
+        break;
+      case 'Feature':
+        callback(layer.properties);
+        break;
+  }
+}
+module.exports.propEach = propEach;
+
+/**
+ * Lazily reduce properties in any GeoJSON object into a single value,
+ * similar to how Array.reduce works. However, in this case we lazily run
+ * the reduction, so an array of all properties is unnecessary.
+ *
+ * @param {Object} layer any GeoJSON object
+ * @param {Function} callback a method that takes (memo, coord) and returns
+ * a new memo
+ * @param {*} memo the starting value of memo: can be any type.
+ */
+function propReduce(layer, callback, memo) {
+  propEach(layer, function(prop) {
+    memo = callback(memo, prop);
+  });
+  return memo;
+}
+module.exports.propReduce = propReduce;
+
+},{}],11:[function(require,module,exports){
+/**
+ * Takes coordinates and properties (optional) and returns a new {@link Point} feature.
+ *
+ * @module turf/point
+ * @category helper
+ * @param {number} longitude position west to east in decimal degrees
+ * @param {number} latitude position south to north in decimal degrees
+ * @param {Object} properties an Object that is used as the {@link Feature}'s
+ * properties
+ * @return {Point} a Point feature
+ * @example
+ * var pt1 = turf.point([-75.343, 39.984]);
+ *
+ * //=pt1
+ */
+var isArray = Array.isArray || function(arg) {
+  return Object.prototype.toString.call(arg) === '[object Array]';
+};
+module.exports = function(coordinates, properties) {
+  if (!isArray(coordinates)) throw new Error('Coordinates must be an array');
+  if (coordinates.length < 2) throw new Error('Coordinates must be at least 2 numbers long');
+  return {
+    type: "Feature",
+    geometry: {
+      type: "Point",
+      coordinates: coordinates
+    },
+    properties: properties || {}
+  };
+};
+
+},{}],12:[function(require,module,exports){
+/**
+ * Takes an array of LinearRings and optionally an {@link Object} with properties and returns a GeoJSON {@link Polygon} feature.
+ *
+ * @module turf/polygon
+ * @category helper
+ * @param {Array<Array<Number>>} rings an array of LinearRings
+ * @param {Object} properties an optional properties object
+ * @return {Polygon} a Polygon feature
+ * @throws {Error} throw an error if a LinearRing of the polygon has too few positions
+ * or if a LinearRing of the Polygon does not have matching Positions at the
+ * beginning & end.
+ * @example
+ * var polygon = turf.polygon([[
+ *  [-2.275543, 53.464547],
+ *  [-2.275543, 53.489271],
+ *  [-2.215118, 53.489271],
+ *  [-2.215118, 53.464547],
+ *  [-2.275543, 53.464547]
+ * ]], { name: 'poly1', population: 400});
+ *
+ * //=polygon
+ */
+module.exports = function(coordinates, properties){
+
+  if (coordinates === null) throw new Error('No coordinates passed');
+
+  for (var i = 0; i < coordinates.length; i++) {
+    var ring = coordinates[i];
+    for (var j = 0; j < ring[ring.length - 1].length; j++) {
+      if (ring.length < 4) {
+        throw new Error('Each LinearRing of a Polygon must have 4 or more Positions.');
+      }
+      if (ring[ring.length - 1][j] !== ring[0][j]) {
+        throw new Error('First and last Position are not equivalent.');
+      }
+    }
+  }
+
+  var polygon = {
+    "type": "Feature",
+    "geometry": {
+      "type": "Polygon",
+      "coordinates": coordinates
+    },
+    "properties": properties
+  };
+
+  if (!polygon.properties) {
+    polygon.properties = {};
+  }
+
+  return polygon;
+};
+
+},{}],13:[function(require,module,exports){
 module.exports.VectorTile = require('./lib/vectortile.js');
 module.exports.VectorTileFeature = require('./lib/vectortilefeature.js');
 module.exports.VectorTileLayer = require('./lib/vectortilelayer.js');
 
-},{"./lib/vectortile.js":7,"./lib/vectortilefeature.js":8,"./lib/vectortilelayer.js":9}],7:[function(require,module,exports){
+},{"./lib/vectortile.js":14,"./lib/vectortilefeature.js":15,"./lib/vectortilelayer.js":16}],14:[function(require,module,exports){
 'use strict';
 
 var VectorTileLayer = require('./vectortilelayer');
@@ -1417,7 +2043,7 @@ function readTile(tag, layers, pbf) {
 }
 
 
-},{"./vectortilelayer":9}],8:[function(require,module,exports){
+},{"./vectortilelayer":16}],15:[function(require,module,exports){
 'use strict';
 
 var Point = require('point-geometry');
@@ -1551,10 +2177,10 @@ VectorTileFeature.prototype.toGeoJSON = function(x, y, z) {
         x0 = this.extent * x,
         y0 = this.extent * y,
         coords = this.loadGeometry(),
-        type = VectorTileFeature.types[this.type];
+        type = VectorTileFeature.types[this.type],
+        i, j;
 
-    for (var i = 0; i < coords.length; i++) {
-        var line = coords[i];
+    function project(line) {
         for (var j = 0; j < line.length; j++) {
             var p = line[j], y2 = 180 - (p.y + y0) * 360 / size;
             line[j] = [
@@ -1564,15 +2190,36 @@ VectorTileFeature.prototype.toGeoJSON = function(x, y, z) {
         }
     }
 
-    if (type === 'Point' && coords.length === 1) {
-        coords = coords[0][0];
-    } else if (type === 'Point') {
+    switch (this.type) {
+    case 1:
+        var points = [];
+        for (i = 0; i < coords.length; i++) {
+            points[i] = coords[i][0];
+        }
+        coords = points;
+        project(coords);
+        break;
+
+    case 2:
+        for (i = 0; i < coords.length; i++) {
+            project(coords[i]);
+        }
+        break;
+
+    case 3:
+        coords = classifyRings(coords);
+        for (i = 0; i < coords.length; i++) {
+            for (j = 0; j < coords[i].length; j++) {
+                project(coords[i][j]);
+            }
+        }
+        break;
+    }
+
+    if (coords.length === 1) {
         coords = coords[0];
-        type = 'MultiPoint';
-    } else if (type === 'LineString' && coords.length === 1) {
-        coords = coords[0];
-    } else if (type === 'LineString') {
-        type = 'MultiLineString';
+    } else {
+        type = 'Multi' + type;
     }
 
     var result = {
@@ -1591,7 +2238,47 @@ VectorTileFeature.prototype.toGeoJSON = function(x, y, z) {
     return result;
 };
 
-},{"point-geometry":10}],9:[function(require,module,exports){
+// classifies an array of rings into polygons with outer rings and holes
+
+function classifyRings(rings) {
+    var len = rings.length;
+
+    if (len <= 1) return [rings];
+
+    var polygons = [],
+        polygon,
+        ccw;
+
+    for (var i = 0; i < len; i++) {
+        var area = signedArea(rings[i]);
+        if (area === 0) continue;
+
+        if (ccw === undefined) ccw = area < 0;
+
+        if (ccw === area < 0) {
+            if (polygon) polygons.push(polygon);
+            polygon = [rings[i]];
+
+        } else {
+            polygon.push(rings[i]);
+        }
+    }
+    if (polygon) polygons.push(polygon);
+
+    return polygons;
+}
+
+function signedArea(ring) {
+    var sum = 0;
+    for (var i = 0, len = ring.length, j = len - 1, p1, p2; i < len; j = i++) {
+        p1 = ring[i];
+        p2 = ring[j];
+        sum += (p2.x - p1.x) * (p1.y + p2.y);
+    }
+    return sum;
+}
+
+},{"point-geometry":5}],16:[function(require,module,exports){
 'use strict';
 
 var VectorTileFeature = require('./vectortilefeature.js');
@@ -1654,146 +2341,19 @@ VectorTileLayer.prototype.feature = function(i) {
     return new VectorTileFeature(this._pbf, end, this.extent, this._keys, this._values);
 };
 
-},{"./vectortilefeature.js":8}],10:[function(require,module,exports){
+},{"./vectortilefeature.js":15}],17:[function(require,module,exports){
+(function (global){
 'use strict';
 
-module.exports = Point;
-
-function Point(x, y) {
-    this.x = x;
-    this.y = y;
-}
-
-Point.prototype = {
-    clone: function() { return new Point(this.x, this.y); },
-
-    add:     function(p) { return this.clone()._add(p);     },
-    sub:     function(p) { return this.clone()._sub(p);     },
-    mult:    function(k) { return this.clone()._mult(k);    },
-    div:     function(k) { return this.clone()._div(k);     },
-    rotate:  function(a) { return this.clone()._rotate(a);  },
-    matMult: function(m) { return this.clone()._matMult(m); },
-    unit:    function() { return this.clone()._unit(); },
-    perp:    function() { return this.clone()._perp(); },
-    round:   function() { return this.clone()._round(); },
-
-    mag: function() {
-        return Math.sqrt(this.x * this.x + this.y * this.y);
-    },
-
-    equals: function(p) {
-        return this.x === p.x &&
-               this.y === p.y;
-    },
-
-    dist: function(p) {
-        return Math.sqrt(this.distSqr(p));
-    },
-
-    distSqr: function(p) {
-        var dx = p.x - this.x,
-            dy = p.y - this.y;
-        return dx * dx + dy * dy;
-    },
-
-    angle: function() {
-        return Math.atan2(this.y, this.x);
-    },
-
-    angleTo: function(b) {
-        return Math.atan2(this.y - b.y, this.x - b.x);
-    },
-
-    angleWith: function(b) {
-        return this.angleWithSep(b.x, b.y);
-    },
-
-    // Find the angle of the two vectors, solving the formula for the cross product a x b = |a||b|sin(θ) for θ.
-    angleWithSep: function(x, y) {
-        return Math.atan2(
-            this.x * y - this.y * x,
-            this.x * x + this.y * y);
-    },
-
-    _matMult: function(m) {
-        var x = m[0] * this.x + m[1] * this.y,
-            y = m[2] * this.x + m[3] * this.y;
-        this.x = x;
-        this.y = y;
-        return this;
-    },
-
-    _add: function(p) {
-        this.x += p.x;
-        this.y += p.y;
-        return this;
-    },
-
-    _sub: function(p) {
-        this.x -= p.x;
-        this.y -= p.y;
-        return this;
-    },
-
-    _mult: function(k) {
-        this.x *= k;
-        this.y *= k;
-        return this;
-    },
-
-    _div: function(k) {
-        this.x /= k;
-        this.y /= k;
-        return this;
-    },
-
-    _unit: function() {
-        this._div(this.mag());
-        return this;
-    },
-
-    _perp: function() {
-        var y = this.y;
-        this.y = this.x;
-        this.x = -y;
-        return this;
-    },
-
-    _rotate: function(angle) {
-        var cos = Math.cos(angle),
-            sin = Math.sin(angle),
-            x = cos * this.x - sin * this.y,
-            y = sin * this.x + cos * this.y;
-        this.x = x;
-        this.y = y;
-        return this;
-    },
-
-    _round: function() {
-        this.x = Math.round(this.x);
-        this.y = Math.round(this.y);
-        return this;
-    }
-};
-
-// constructs Point from an array if necessary
-Point.convert = function (a) {
-    if (a instanceof Point) {
-        return a;
-    }
-    if (Array.isArray(a)) {
-        return new Point(a[0], a[1]);
-    }
-    return a;
-};
-
-},{}],11:[function(require,module,exports){
-(function (global){
 var Protobuf = require('pbf'),
     VectorTile = require('vector-tile').VectorTile,
     L = (typeof window !== "undefined" ? window['L'] : typeof global !== "undefined" ? global['L'] : null),
     corslite = require('corslite'),
-    rbush = require('rbush');
+    rbush = require('rbush'),
+    extent = require('turf-extent'),
+    inside = require('turf-inside'),
+    polygon = require('turf-polygon'),
+    point = require('turf-point');
 
 module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
@@ -1803,7 +2363,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             return f.properties.osm_id;
         },
         lazy: true,
-        zoomIn: 0
+        zoomIn: 0,
+        joinFeatures: false
     },
 
     initialize: function(tileUrl, options) {
@@ -1811,12 +2372,13 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, cb, context, radius) {
+    query: function(latLng, cb, context, options) {
         if (!this._map) return;
 
-        var z = this._map.getZoom() + this.options.zoomIn;
+        options = options || {};
+        var z = this._map.getZoom() + (options.zoomIn || this.options.zoomIn);
 
-        radius = radius || this.options.defaultradius;
+        var radius = options.radius || this.options.defaultRadius;
         radius *= this._map.getZoomScale(z);
 
         var p = this._map.project(latLng, z);
@@ -1826,7 +2388,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                 if (err) {
                     return cb(err);
                 }
-                this._query(p, radius, cb, context);
+                this._query(latLng, p, options, cb, context);
             }, this));
             return this;
         }
@@ -1835,21 +2397,33 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         return this;
     },
 
-    _query: function(p, radius, cb, context) {
+    _query: function(latLng, p, options, cb, context) {
         var sqDistToP = function(s) {
-                var dx = s[0] - p.x,
-                    dy = s[1] - p.y;
+                var dx = (s[0] + s[2]) / 2 - p.x,
+                    dy = (s[1] + s[3]) / 2 - p.y;
                 return dx * dx + dy * dy;
             },
+            radius = options.radius || this.options.defaultRadius,
             sqTol = radius * radius,
             search = this._bush.search([p.x - radius, p.y - radius, p.x + radius, p.y + radius]),
             results = [],
             i;
 
+        if (options.onlyInside) {
+            var pFeature = point([latLng.lng, latLng.lat]);
+            search = search.filter(function(data) {
+                var f = data[4];
+                if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+                    return inside(pFeature, f);
+                } else {
+                    return true;
+                }
+            });
+        }
         search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
 
         for (i = 0; i < search.length; i++) {
-            if (sqDistToP(search[i]) < sqTol) {
+            if (options.onlyInside || sqDistToP(search[i]) < sqTol) {
                 results.push(search[i][4]);
             }
         }
@@ -1957,36 +2531,81 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         var filter = this.options.filter,
             j,
             f,
-            id;
+            id,
+            featureData,
+            oldFeature;
 
         for (j = 0; j < layer.length; j++) {
             f = layer.feature(j);
             if (!filter || filter(f)) {
                 id = this.options.featureId(f);
+                featureData = null;
                 if (!this._features[id]) {
-                    this._features[id] = true;
-                    this._handleFeature(f.toGeoJSON(x, y, z));
+                    featureData = this._featureToBush(f.toGeoJSON(x, y, z));
+                } else if (this.options.joinFeatures) {
+                    featureData = this._joinFeatures(id, f.toGeoJSON(x, y, z));
+                    oldFeature = this._features[id];
+                    if (featureData[0] !== oldFeature[0] ||
+                        featureData[1] !== oldFeature[1] ||
+                        featureData[2] !== oldFeature[2] ||
+                        featureData[3] !== oldFeature[3]) {
+                        this._bush.remove(oldFeature);
+                    }
+                }
+
+                if (featureData) {
+                    this._bush.insert(featureData);
+                    this._features[id] = featureData;
                 }
             }
         }
     },
 
-    _handleFeature: function(geojson) {
+    _featureToBush: function(geojson) {
         var z = this._map.getZoom() + this.options.zoomIn,
-            p;
+            bbox = extent(geojson),
+            corners = [
+                this._map.project([bbox[1], bbox[0]], z),
+                this._map.project([bbox[3], bbox[2]], z)
+            ],
+            projBBox = L.bounds(corners);
 
-        if (geojson.geometry.type !== 'Point') {
-            this.fire('featureerror', {
-                error: 'Feature does not have a point geometry',
-                feature: f
-            });
-            return;
+        return [
+            projBBox.min.x,
+            projBBox.min.y,
+            projBBox.max.x,
+            projBBox.max.y, 
+            geojson
+        ];
+    },
+
+    _joinFeatures: function(id, add) {
+        var featureData = this._features[id],
+            f = featureData[4],
+            fc = f.geometry.coordinates,
+            ac = add.geometry.coordinates,
+            atype = add.geometry.type,
+            ftype = f.geometry.type;
+        if ((atype === 'MultiPolygon' || atype === 'Polygon') && 
+            (ftype === 'Polygon' || ftype === 'MultiPolygon')) {
+            var apolys = atype === 'Polygon' ? [ac] : ac;
+            var fpolys = ftype === 'Polygon' ? [fc] : fc;
+
+            f.geometry = {
+                type: 'MultiPolygon',
+                coordinates: fpolys.concat(apolys)
+            }
+        } else if (atype === 'MultiPolygon' && ftype === 'MultiPolygon') {
+            f.geometry.coordinates = fc.concat(ac);
+        } else if (atype === 'Point' && ftype === 'Point') {
+            return featureData;
+        } else {
+            throw 'Invalid join of geometry types ' +
+                add.geometry.type + ' and ' +
+                f.geometry.type;
         }
-        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]], z);
-        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
-        this.fire('featureadded', {
-            feature: geojson
-        });
+
+        return this._featureToBush(f);
     }
 });
 
@@ -1995,4 +2614,4 @@ L.tileLayer.underneath = function(tileUrl, options) {
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"corslite":1,"pbf":3,"rbush":5,"vector-tile":6}]},{},[11]);
+},{"corslite":1,"pbf":3,"rbush":6,"turf-extent":7,"turf-inside":8,"turf-point":11,"turf-polygon":12,"vector-tile":13}]},{},[17]);
