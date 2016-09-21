@@ -1,8 +1,14 @@
+'use strict';
+
 var Protobuf = require('pbf'),
     VectorTile = require('vector-tile').VectorTile,
     L = require('leaflet'),
     corslite = require('corslite'),
-    rbush = require('rbush');
+    rbush = require('rbush'),
+    extent = require('turf-extent'),
+    inside = require('turf-inside'),
+    polygon = require('turf-polygon'),
+    point = require('turf-point');
 
 module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     options: {
@@ -12,7 +18,8 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
             return f.properties.osm_id;
         },
         lazy: true,
-        zoomIn: 0
+        zoomIn: 0,
+        joinFeatures: false
     },
 
     initialize: function(tileUrl, options) {
@@ -20,12 +27,13 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         this._bush = rbush(this.options.rbushMaxEntries);
     },
 
-    query: function(latLng, cb, context, radius) {
+    query: function(latLng, cb, context, options) {
         if (!this._map) return;
 
-        var z = this._map.getZoom() + this.options.zoomIn;
+        options = options || {};
+        var z = this._map.getZoom() + (options.zoomIn || this.options.zoomIn);
 
-        radius = radius || this.options.defaultradius;
+        var radius = options.radius || this.options.defaultRadius;
         radius *= this._map.getZoomScale(z);
 
         var p = this._map.project(latLng, z);
@@ -35,7 +43,7 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                 if (err) {
                     return cb(err);
                 }
-                this._query(p, radius, cb, context);
+                this._query(latLng, p, options, cb, context);
             }, this));
             return this;
         }
@@ -44,21 +52,33 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         return this;
     },
 
-    _query: function(p, radius, cb, context) {
+    _query: function(latLng, p, options, cb, context) {
         var sqDistToP = function(s) {
-                var dx = s[0] - p.x,
-                    dy = s[1] - p.y;
+                var dx = (s[0] + s[2]) / 2 - p.x,
+                    dy = (s[1] + s[3]) / 2 - p.y;
                 return dx * dx + dy * dy;
             },
+            radius = options.radius || this.options.defaultRadius,
             sqTol = radius * radius,
             search = this._bush.search([p.x - radius, p.y - radius, p.x + radius, p.y + radius]),
             results = [],
             i;
 
+        if (options.onlyInside) {
+            var pFeature = point([latLng.lng, latLng.lat]);
+            search = search.filter(function(data) {
+                var f = data[4];
+                if (f.geometry.type === 'Polygon' || f.geometry.type === 'MultiPolygon') {
+                    return inside(pFeature, f);
+                } else {
+                    return true;
+                }
+            });
+        }
         search.sort(function(a, b) { return sqDistToP(a) - sqDistToP(b); });
 
         for (i = 0; i < search.length; i++) {
-            if (sqDistToP(search[i]) < sqTol) {
+            if (options.onlyInside || sqDistToP(search[i]) < sqTol) {
                 results.push(search[i][4]);
             }
         }
@@ -166,36 +186,81 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         var filter = this.options.filter,
             j,
             f,
-            id;
+            id,
+            featureData,
+            oldFeature;
 
         for (j = 0; j < layer.length; j++) {
             f = layer.feature(j);
             if (!filter || filter(f)) {
                 id = this.options.featureId(f);
+                featureData = null;
                 if (!this._features[id]) {
-                    this._features[id] = true;
-                    this._handleFeature(f.toGeoJSON(x, y, z));
+                    featureData = this._featureToBush(f.toGeoJSON(x, y, z));
+                } else if (this.options.joinFeatures) {
+                    featureData = this._joinFeatures(id, f.toGeoJSON(x, y, z));
+                    oldFeature = this._features[id];
+                    if (featureData[0] !== oldFeature[0] ||
+                        featureData[1] !== oldFeature[1] ||
+                        featureData[2] !== oldFeature[2] ||
+                        featureData[3] !== oldFeature[3]) {
+                        this._bush.remove(oldFeature);
+                    }
+                }
+
+                if (featureData) {
+                    this._bush.insert(featureData);
+                    this._features[id] = featureData;
                 }
             }
         }
     },
 
-    _handleFeature: function(geojson) {
+    _featureToBush: function(geojson) {
         var z = this._map.getZoom() + this.options.zoomIn,
-            p;
+            bbox = extent(geojson),
+            corners = [
+                this._map.project([bbox[1], bbox[0]], z),
+                this._map.project([bbox[3], bbox[2]], z)
+            ],
+            projBBox = L.bounds(corners);
 
-        if (geojson.geometry.type !== 'Point') {
-            this.fire('featureerror', {
-                error: 'Feature does not have a point geometry',
-                feature: f
-            });
-            return;
+        return [
+            projBBox.min.x,
+            projBBox.min.y,
+            projBBox.max.x,
+            projBBox.max.y, 
+            geojson
+        ];
+    },
+
+    _joinFeatures: function(id, add) {
+        var featureData = this._features[id],
+            f = featureData[4],
+            fc = f.geometry.coordinates,
+            ac = add.geometry.coordinates,
+            atype = add.geometry.type,
+            ftype = f.geometry.type;
+        if ((atype === 'MultiPolygon' || atype === 'Polygon') && 
+            (ftype === 'Polygon' || ftype === 'MultiPolygon')) {
+            var apolys = atype === 'Polygon' ? [ac] : ac;
+            var fpolys = ftype === 'Polygon' ? [fc] : fc;
+
+            f.geometry = {
+                type: 'MultiPolygon',
+                coordinates: fpolys.concat(apolys)
+            }
+        } else if (atype === 'MultiPolygon' && ftype === 'MultiPolygon') {
+            f.geometry.coordinates = fc.concat(ac);
+        } else if (atype === 'Point' && ftype === 'Point') {
+            return featureData;
+        } else {
+            throw 'Invalid join of geometry types ' +
+                add.geometry.type + ' and ' +
+                f.geometry.type;
         }
-        p = this._map.project([geojson.geometry.coordinates[1], geojson.geometry.coordinates[0]], z);
-        this._bush.insert([p.x, p.y, p.x, p.y, geojson]);
-        this.fire('featureadded', {
-            feature: geojson
-        });
+
+        return this._featureToBush(f);
     }
 });
 

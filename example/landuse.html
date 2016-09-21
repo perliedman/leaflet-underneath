@@ -1,0 +1,41 @@
+<html>
+<head>
+    <title></title>
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@0.7.7/dist/leaflet.css" />
+    <link rel="stylesheet" type="text/css" href="https://www.mapbox.com/maki/www/maki-sprite.css" />
+    <style type="text/css">
+    body {
+        padding: 0;
+        margin: 0;
+    }
+    #map {
+        position: absolute;
+        width: 100%;
+        height: 100%;
+    }
+
+    .maki-icon {
+        display: inline-block;
+        vertical-align: middle;
+        margin-right: 8px;
+    }
+
+    ul {
+        list-style: none;
+    }
+
+    li {
+        margin-left: -48px;
+        margin-bottom: 4px;
+        font-size: 18px;
+    }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+
+    <script src="https://unpkg.com/leaflet@0.7.7/dist/leaflet-src.js"></script>
+    <script src="../dist/leaflet-underneath-src.js"></script>
+    <script src="landuse.js"></script>
+</body>
+</html>

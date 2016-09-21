@@ -53,9 +53,17 @@ Option                 | Type          | Default              | Description
 `featureId`            | `Function`    |                      | Function that returns a unique feature id; used to filter out duplicates. Default returns a features `osm_id`property
 `lazy`                 | `Boolean`     | `true`               | If lazy, only tiles that are queried will be loaded. Otherwise, all tiles will be loaded, like a normal tile layer.
 `zoomIn`               | `Number`      | `0`                  | Zoom in relative to the map's current zoom level when making a query; used to get more or less detailed results than current zoom would give
+`joinFeatures`         | `Boolean`     | `false`              | For features with same id, should geometries be joined (`true`), or should they be ignored (`false`)
 
 #### Methods
 
 Method                          | Returns                   | Description
 --------------------------------|---------------------------|--------------------------
-`query(<`[`L.LatLng`](http://leafletjs.com/reference.html#latlng)`> latLng, <Function> callback, <Object> context, <Number> radius?)` | `this` | Asynchronously queries for features near `latLng`; `callback` will be called with features within `radius` pixels of the coordinate
+`query(<`[`L.LatLng`](http://leafletjs.com/reference.html#latlng)`> latLng, <Function> callback, <Object> context, <`[`QueryOptions`](#queryoptions)> options?)` | `this` | Asynchronously queries for features near `latLng`; `callback` will be called with features within `radius` pixels of the coordinate
+
+#### QueryOptions
+
+Option                 | Type          | Default              | Description
+-----------------------|---------------|----------------------|----------------------------
+`radius`               | `Number`      | Take from layer options | Number of pixels search radius
+`onlyInside`           | `Boolean`     | `false`              | Only return features (polygons) that the queried location is inside
