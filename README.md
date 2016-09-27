@@ -1,5 +1,5 @@
 # Leaflet Underneath
-[![NPM version](https://img.shields.io/npm/v/leaflet-underneath.svg)](https://www.npmjs.com/package/leaflet-control-geocoder) ![Leaflet 1.0.0 compatible!](https://img.shields.io/badge/Leaflet%201.0.0-%E2%9C%93-1EB300.svg?style=flat)
+[![NPM version](https://img.shields.io/npm/v/leaflet-underneath.svg)](https://www.npmjs.com/package/leaflet-underneath) ![Leaflet 1.0.0 compatible!](https://img.shields.io/badge/Leaflet%201.0.0-%E2%9C%93-1EB300.svg?style=flat)
 
 [Check out the demo](http://www.liedman.net/leaflet-underneath/)
 
