@@ -1,4 +1,6 @@
 # Leaflet Underneath
+
+[![Greenkeeper badge](https://badges.greenkeeper.io/perliedman/leaflet-underneath.svg)](https://greenkeeper.io/)
 [![NPM version](https://img.shields.io/npm/v/leaflet-underneath.svg)](https://www.npmjs.com/package/leaflet-underneath) !
 
 [Check out the demo](http://www.liedman.net/leaflet-underneath/)
