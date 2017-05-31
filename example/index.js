@@ -14,13 +14,11 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
     attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-var pois = L.tileLayer.underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
-            '{z}/{x}/{y}.vector.pbf?access_token=<your-token-here>', {
+var pois = L.underneath('http://{s}.tiles.mapbox.com/v4/mapbox.mapbox-streets-v6/' +
+            '{z}/{x}/{y}.vector.pbf?access_token=pk.eyJ1IjoibGllZG1hbiIsImEiOiJjaWtjYjh5cGcwMDNhdm5sdmoycmgzY3drIn0.CZCSz1N53qWOVB0j2A_5pg', map, {
                 layers: ['poi_label'],
-                lazy: true,
                 zoomIn: 2
-            })
-    .addTo(map);
+            });
 
 map.on('click', function(e) {
     var results = [],

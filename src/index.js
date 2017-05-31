@@ -10,21 +10,30 @@ var Protobuf = require('pbf'),
     polygon = require('turf-polygon'),
     point = require('turf-point');
 
-module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
+module.exports = L.Underneath = L.Evented.extend({
     options: {
         layers: [],
         defaultRadius: 20,
         featureId: function(f) {
             return f.properties.osm_id;
         },
-        lazy: true,
         zoomIn: 0,
-        joinFeatures: false
+        joinFeatures: false,
+        tileSize: 256,
+        minZoom: 0,
+        maxZoom: 22,
+        subdomains: ['a', 'b', 'c']
     },
 
-    initialize: function(tileUrl, options) {
-        L.TileLayer.prototype.initialize.call(this, tileUrl, options);
+    initialize: function(tileUrl, map, options) {
+        L.setOptions(this, options);
+        this._url = tileUrl;
+        this._map = map;
         this._bush = rbush(this.options.rbushMaxEntries);
+        this._tiles = {};
+
+        map.on('zoomend', this._reset, this);
+        this._reset();
     },
 
     query: function(latLng, cb, context, options) {
@@ -38,17 +47,12 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
 
         var p = this._map.project(latLng, z);
 
-        if (this.options.lazy) {
-            this._loadTiles(p, radius, L.bind(function(err) {
-                if (err) {
-                    return cb(err);
-                }
-                this._query(latLng, p, options, cb, context);
-            }, this));
-            return this;
-        }
-
-        this._query(p, radius, cb, context);
+        this._loadTiles(p, radius, L.bind(function(err) {
+            if (err) {
+                return cb(err);
+            }
+            this._query(latLng, p, options, cb, context);
+        }, this));
         return this;
     },
 
@@ -89,23 +93,60 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     _loadTiles: function(p, radius, cb) {
         var se = p.add([radius, radius]),
             nw = p.subtract([radius, radius]),
-            tileBounds = L.bounds(
+            bounds = L.bounds(
                 nw.divideBy(this.options.tileSize)._floor(),
-                se.divideBy(this.options.tileSize)._floor());
+                se.divideBy(this.options.tileSize)._floor()),
+            queue = [],
+            center = this._map.unproject(p);
 
-        this._forceLoadTiles = true;
-        this._addTilesFromCenterOut(tileBounds);
-        this._forceLoadTiles = false;
+        var j, i, point;
 
-        if (this._tilesToLoad) {
-            this.once('load', function() { cb(); });
-        } else {
-            cb();
+        for (j = bounds.min.y; j <= bounds.max.y; j++) {
+            for (i = bounds.min.x; i <= bounds.max.x; i++) {
+                point = new L.Point(i, j);
+
+                if (this._tileShouldBeLoaded(point)) {
+                    queue.push(point);
+                }
+            }
+        }
+
+        var tilesToLoad = queue.length,
+            waitingTiles = tilesToLoad;
+
+        if (tilesToLoad === 0) { return cb(); }
+
+        // load tiles in order of their distance to center
+        queue.sort(function (a, b) {
+            return a.distanceTo(center) - b.distanceTo(center);
+        });
+
+        for (i = 0; i < tilesToLoad; i++) {
+            this._addTile(queue[i], function () {
+                waitingTiles--;
+                if (waitingTiles <= 0) {
+                    cb();
+                }
+            });
         }
     },
 
-    _getZoomForUrl: function() {
-        return L.TileLayer.prototype._getZoomForUrl.call(this) + this.options.zoomIn;
+    getTileUrl: function (tilePoint) {
+        return L.Util.template(this._url, L.extend({
+            s: this._getSubdomain(tilePoint),
+            z: tilePoint.z,
+            x: tilePoint.x,
+            y: tilePoint.y
+        }, this.options));
+    },
+
+    _getSubdomain: function (tilePoint) {
+        var index = Math.abs(tilePoint.x + tilePoint.y) % this.options.subdomains.length;
+        return this.options.subdomains[index];
+    },
+
+    _tileShouldBeLoaded: function(tilePoint) {
+        return true;
     },
 
     _getWrapTileNum: function () {
@@ -114,15 +155,14 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         return size.divideBy(this._getTileSize())._floor();
     },
 
-    _addTile: function(tilePoint, fragment, cb) {
+    _addTile: function(tilePoint, cb) {
         var key = this._tileKey(tilePoint),
             tile = { datum: null, processed: false };
 
-        if (!this._tiles[key] && (!this.options.lazy || this._forceLoadTiles)) {
+        if (!this._tiles[key]) {
             this._tiles[key] = tile;
             return this._loadTile(tile, tilePoint, cb);
         } else {
-            this._tileLoaded();
             return cb && cb();
         }
     },
@@ -135,7 +175,9 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         var url,
             request;
 
-        this._adjustTilePoint(tilePoint);
+        //this._adjustTilePoint(tilePoint);
+        tilePoint.z = Math.min(this.options.maxZoom, 
+            Math.max(this.options.minZoom, this._map.getZoom() + this.options.zoomIn));
         url = this.getTileUrl(tilePoint);
         request = corslite(url, L.bind(function(err, data) {
             if (err) {
@@ -144,19 +186,18 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
-                this._tileLoaded();
+                //this._tileLoaded();
                 return cb && cb(err);
             }
 
             this._parseTile(tile, tilePoint, new Uint8Array(data.response));
-            this._tileLoaded();
+            //this._tileLoaded();
             return cb && cb();
         }, this), true);
         request.responseType = 'arraybuffer';
     },
 
     _reset: function() {
-        L.TileLayer.prototype._reset.call(this);
         this._features = {};
         this._bush.clear();
         this.fire('featurescleared');
@@ -264,6 +305,6 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     }
 });
 
-L.tileLayer.underneath = function(tileUrl, options) {
-    return new L.TileLayer.Underneath(tileUrl, options);
+L.underneath = function(tileUrl, map, options) {
+    return new L.Underneath(tileUrl, map, options);
 };
