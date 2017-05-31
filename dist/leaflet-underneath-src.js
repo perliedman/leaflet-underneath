@@ -94,6 +94,92 @@ function corslite(url, callback, cors) {
 if (typeof module !== 'undefined') module.exports = corslite;
 
 },{}],2:[function(require,module,exports){
+exports.read = function (buffer, offset, isLE, mLen, nBytes) {
+  var e, m
+  var eLen = nBytes * 8 - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var nBits = -7
+  var i = isLE ? (nBytes - 1) : 0
+  var d = isLE ? -1 : 1
+  var s = buffer[offset + i]
+
+  i += d
+
+  e = s & ((1 << (-nBits)) - 1)
+  s >>= (-nBits)
+  nBits += eLen
+  for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+  m = e & ((1 << (-nBits)) - 1)
+  e >>= (-nBits)
+  nBits += mLen
+  for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
+
+  if (e === 0) {
+    e = 1 - eBias
+  } else if (e === eMax) {
+    return m ? NaN : ((s ? -1 : 1) * Infinity)
+  } else {
+    m = m + Math.pow(2, mLen)
+    e = e - eBias
+  }
+  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
+}
+
+exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
+  var e, m, c
+  var eLen = nBytes * 8 - mLen - 1
+  var eMax = (1 << eLen) - 1
+  var eBias = eMax >> 1
+  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
+  var i = isLE ? 0 : (nBytes - 1)
+  var d = isLE ? 1 : -1
+  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
+
+  value = Math.abs(value)
+
+  if (isNaN(value) || value === Infinity) {
+    m = isNaN(value) ? 1 : 0
+    e = eMax
+  } else {
+    e = Math.floor(Math.log(value) / Math.LN2)
+    if (value * (c = Math.pow(2, -e)) < 1) {
+      e--
+      c *= 2
+    }
+    if (e + eBias >= 1) {
+      value += rt / c
+    } else {
+      value += rt * Math.pow(2, 1 - eBias)
+    }
+    if (value * c >= 2) {
+      e++
+      c /= 2
+    }
+
+    if (e + eBias >= eMax) {
+      m = 0
+      e = eMax
+    } else if (e + eBias >= 1) {
+      m = (value * c - 1) * Math.pow(2, mLen)
+      e = e + eBias
+    } else {
+      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
+      e = 0
+    }
+  }
+
+  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
+
+  e = (e << mLen) | m
+  eLen += mLen
+  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
+
+  buffer[offset + i - d] |= s * 128
+}
+
+},{}],3:[function(require,module,exports){
 'use strict';
 
 // lightweight Buffer shim for pbf browser build
@@ -254,7 +340,7 @@ function encodeString(str) {
     return bytes;
 }
 
-},{"ieee754":4}],3:[function(require,module,exports){
+},{"ieee754":2}],4:[function(require,module,exports){
 (function (global){
 'use strict';
 
@@ -344,23 +430,14 @@ Pbf.prototype = {
 
     readVarint: function() {
         var buf = this.buf,
-            val, b, b0, b1, b2, b3;
+            val, b;
 
-        b0 = buf[this.pos++]; if (b0 < 0x80) return b0;                 b0 = b0 & 0x7f;
-        b1 = buf[this.pos++]; if (b1 < 0x80) return b0 | b1 << 7;       b1 = (b1 & 0x7f) << 7;
-        b2 = buf[this.pos++]; if (b2 < 0x80) return b0 | b1 | b2 << 14; b2 = (b2 & 0x7f) << 14;
-        b3 = buf[this.pos++]; if (b3 < 0x80) return b0 | b1 | b2 | b3 << 21;
+        b = buf[this.pos++]; val  =  b & 0x7f;        if (b < 0x80) return val;
+        b = buf[this.pos++]; val |= (b & 0x7f) << 7;  if (b < 0x80) return val;
+        b = buf[this.pos++]; val |= (b & 0x7f) << 14; if (b < 0x80) return val;
+        b = buf[this.pos++]; val |= (b & 0x7f) << 21; if (b < 0x80) return val;
 
-        val = b0 | b1 | b2 | (b3 & 0x7f) << 21;
-
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x10000000;         if (b < 0x80) return val;
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x800000000;        if (b < 0x80) return val;
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x40000000000;      if (b < 0x80) return val;
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x2000000000000;    if (b < 0x80) return val;
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x100000000000000;  if (b < 0x80) return val;
-        b = buf[this.pos++]; val += (b & 0x7f) * 0x8000000000000000; if (b < 0x80) return val;
-
-        throw new Error('Expected varint not more than 10 bytes');
+        return readVarintRemainder(val, this);
     },
 
     readVarint64: function() {
@@ -516,39 +593,17 @@ Pbf.prototype = {
     writeVarint: function(val) {
         val = +val;
 
-        if (val <= 0x7f) {
-            this.realloc(1);
-            this.buf[this.pos++] = val;
-
-        } else if (val <= 0x3fff) {
-            this.realloc(2);
-            this.buf[this.pos++] = ((val >>> 0) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 7) & 0x7f);
-
-        } else if (val <= 0x1fffff) {
-            this.realloc(3);
-            this.buf[this.pos++] = ((val >>> 0) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 7) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 14) & 0x7f);
-
-        } else if (val <= 0xfffffff) {
-            this.realloc(4);
-            this.buf[this.pos++] = ((val >>> 0) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 7) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 14) & 0x7f) | 0x80;
-            this.buf[this.pos++] = ((val >>> 21) & 0x7f);
-
-        } else {
-            var pos = this.pos;
-            while (val >= 0x80) {
-                this.realloc(1);
-                this.buf[this.pos++] = (val & 0xff) | 0x80;
-                val /= 0x80;
-            }
-            this.realloc(1);
-            this.buf[this.pos++] = val | 0;
-            if (this.pos - pos > 10) throw new Error('Given varint doesn\'t fit into 10 bytes');
+        if (val > 0xfffffff) {
+            writeBigVarint(val, this);
+            return;
         }
+
+        this.realloc(4);
+
+        this.buf[this.pos++] =           val & 0x7f  | (val > 0x7f ? 0x80 : 0); if (val <= 0x7f) return;
+        this.buf[this.pos++] = ((val >>>= 7) & 0x7f) | (val > 0x7f ? 0x80 : 0); if (val <= 0x7f) return;
+        this.buf[this.pos++] = ((val >>>= 7) & 0x7f) | (val > 0x7f ? 0x80 : 0); if (val <= 0x7f) return;
+        this.buf[this.pos++] =   (val >>> 7) & 0x7f;
     },
 
     writeSVarint: function(val) {
@@ -595,17 +650,7 @@ Pbf.prototype = {
         fn(obj, this);
         var len = this.pos - startPos;
 
-        var varintLen =
-            len <= 0x7f ? 1 :
-            len <= 0x3fff ? 2 :
-            len <= 0x1fffff ? 3 :
-            len <= 0xfffffff ? 4 : Math.ceil(Math.log(len) / (Math.LN2 * 7));
-
-        // if 1 byte isn't enough for encoding message length, shift the data to the right
-        if (varintLen > 1) {
-            this.realloc(varintLen - 1);
-            for (var i = this.pos - 1; i >= startPos; i--) this.buf[i + varintLen - 1] = this.buf[i];
-        }
+        if (len >= 0x80) reallocForRawMessage(startPos, len, this);
 
         // finally, write the message length in the reserved place and restore the position
         this.pos = startPos - 1;
@@ -673,6 +718,43 @@ Pbf.prototype = {
     }
 };
 
+function readVarintRemainder(val, pbf) {
+    var buf = pbf.buf, b;
+
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x10000000;         if (b < 0x80) return val;
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x800000000;        if (b < 0x80) return val;
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x40000000000;      if (b < 0x80) return val;
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x2000000000000;    if (b < 0x80) return val;
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x100000000000000;  if (b < 0x80) return val;
+    b = buf[pbf.pos++]; val += (b & 0x7f) * 0x8000000000000000; if (b < 0x80) return val;
+
+    throw new Error('Expected varint not more than 10 bytes');
+}
+
+function writeBigVarint(val, pbf) {
+    pbf.realloc(10);
+
+    var maxPos = pbf.pos + 10;
+
+    while (val >= 1) {
+        if (pbf.pos >= maxPos) throw new Error('Given varint doesn\'t fit into 10 bytes');
+        var b = val & 0xff;
+        pbf.buf[pbf.pos++] = b | (val >= 0x80 ? 0x80 : 0);
+        val /= 0x80;
+    }
+}
+
+function reallocForRawMessage(startPos, len, pbf) {
+    var extraLen =
+        len <= 0x3fff ? 1 :
+        len <= 0x1fffff ? 2 :
+        len <= 0xfffffff ? 3 : Math.ceil(Math.log(len) / (Math.LN2 * 7));
+
+    // if 1 byte isn't enough for encoding message length, shift the data to the right
+    pbf.realloc(extraLen);
+    for (var i = pbf.pos - 1; i >= startPos; i--) pbf.buf[i + extraLen] = pbf.buf[i];
+}
+
 function writePackedVarint(arr, pbf)   { for (var i = 0; i < arr.length; i++) pbf.writeVarint(arr[i]);   }
 function writePackedSVarint(arr, pbf)  { for (var i = 0; i < arr.length; i++) pbf.writeSVarint(arr[i]);  }
 function writePackedFloat(arr, pbf)    { for (var i = 0; i < arr.length; i++) pbf.writeFloat(arr[i]);    }
@@ -684,93 +766,7 @@ function writePackedFixed64(arr, pbf)  { for (var i = 0; i < arr.length; i++) pb
 function writePackedSFixed64(arr, pbf) { for (var i = 0; i < arr.length; i++) pbf.writeSFixed64(arr[i]); }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./buffer":2}],4:[function(require,module,exports){
-exports.read = function (buffer, offset, isLE, mLen, nBytes) {
-  var e, m
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var nBits = -7
-  var i = isLE ? (nBytes - 1) : 0
-  var d = isLE ? -1 : 1
-  var s = buffer[offset + i]
-
-  i += d
-
-  e = s & ((1 << (-nBits)) - 1)
-  s >>= (-nBits)
-  nBits += eLen
-  for (; nBits > 0; e = e * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  m = e & ((1 << (-nBits)) - 1)
-  e >>= (-nBits)
-  nBits += mLen
-  for (; nBits > 0; m = m * 256 + buffer[offset + i], i += d, nBits -= 8) {}
-
-  if (e === 0) {
-    e = 1 - eBias
-  } else if (e === eMax) {
-    return m ? NaN : ((s ? -1 : 1) * Infinity)
-  } else {
-    m = m + Math.pow(2, mLen)
-    e = e - eBias
-  }
-  return (s ? -1 : 1) * m * Math.pow(2, e - mLen)
-}
-
-exports.write = function (buffer, value, offset, isLE, mLen, nBytes) {
-  var e, m, c
-  var eLen = nBytes * 8 - mLen - 1
-  var eMax = (1 << eLen) - 1
-  var eBias = eMax >> 1
-  var rt = (mLen === 23 ? Math.pow(2, -24) - Math.pow(2, -77) : 0)
-  var i = isLE ? 0 : (nBytes - 1)
-  var d = isLE ? 1 : -1
-  var s = value < 0 || (value === 0 && 1 / value < 0) ? 1 : 0
-
-  value = Math.abs(value)
-
-  if (isNaN(value) || value === Infinity) {
-    m = isNaN(value) ? 1 : 0
-    e = eMax
-  } else {
-    e = Math.floor(Math.log(value) / Math.LN2)
-    if (value * (c = Math.pow(2, -e)) < 1) {
-      e--
-      c *= 2
-    }
-    if (e + eBias >= 1) {
-      value += rt / c
-    } else {
-      value += rt * Math.pow(2, 1 - eBias)
-    }
-    if (value * c >= 2) {
-      e++
-      c /= 2
-    }
-
-    if (e + eBias >= eMax) {
-      m = 0
-      e = eMax
-    } else if (e + eBias >= 1) {
-      m = (value * c - 1) * Math.pow(2, mLen)
-      e = e + eBias
-    } else {
-      m = value * Math.pow(2, eBias - 1) * Math.pow(2, mLen)
-      e = 0
-    }
-  }
-
-  for (; mLen >= 8; buffer[offset + i] = m & 0xff, i += d, m /= 256, mLen -= 8) {}
-
-  e = (e << mLen) | m
-  eLen += mLen
-  for (; eLen > 0; buffer[offset + i] = e & 0xff, i += d, e /= 256, eLen -= 8) {}
-
-  buffer[offset + i - d] |= s * 128
-}
-
-},{}],5:[function(require,module,exports){
+},{"./buffer":3}],5:[function(require,module,exports){
 'use strict';
 
 module.exports = Point;
@@ -914,8 +910,6 @@ Point.convert = function (a) {
 'use strict';
 
 function rbush(maxEntries, format) {
-
-    // jshint newcap: false, validthis: true
     if (!(this instanceof rbush)) return new rbush(maxEntries, format);
 
     // max entries in a node is 9 by default; min node fill is 40% for best performance
@@ -1206,7 +1200,7 @@ rbush.prototype = {
                 }
             }
 
-            node = targetNode;
+            node = targetNode || node.children[0];
         }
 
         return node;
@@ -1373,8 +1367,6 @@ rbush.prototype = {
         // uses eval-type function compilation instead of just accepting a toBBox function
         // because the algorithms are very sensitive to sorting functions performance,
         // so they should be dead simple and without inner calls
-
-        // jshint evil: true
 
         var compareArr = ['return a', ' - b', ';'];
 
@@ -2066,7 +2058,7 @@ function VectorTileFeature(pbf, end, extent, keys, values) {
 }
 
 function readFeature(tag, feature, pbf) {
-    if (tag == 1) feature._id = pbf.readVarint();
+    if (tag == 1) feature.id = pbf.readVarint();
     else if (tag == 2) readTag(pbf, feature);
     else if (tag == 3) feature.type = pbf.readVarint();
     else if (tag == 4) feature._geometry = pbf.pos;
@@ -2231,8 +2223,8 @@ VectorTileFeature.prototype.toGeoJSON = function(x, y, z) {
         properties: this.properties
     };
 
-    if ('_id' in this) {
-        result.id = this._id;
+    if ('id' in this) {
+        result.id = this.id;
     }
 
     return result;
@@ -2355,21 +2347,30 @@ var Protobuf = require('pbf'),
     polygon = require('turf-polygon'),
     point = require('turf-point');
 
-module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
+module.exports = L.Underneath = L.Evented.extend({
     options: {
         layers: [],
         defaultRadius: 20,
         featureId: function(f) {
             return f.properties.osm_id;
         },
-        lazy: true,
         zoomIn: 0,
-        joinFeatures: false
+        joinFeatures: false,
+        tileSize: 256,
+        minZoom: 0,
+        maxZoom: 22,
+        subdomains: ['a', 'b', 'c']
     },
 
-    initialize: function(tileUrl, options) {
-        L.TileLayer.prototype.initialize.call(this, tileUrl, options);
+    initialize: function(tileUrl, map, options) {
+        L.setOptions(this, options);
+        this._url = tileUrl;
+        this._map = map;
         this._bush = rbush(this.options.rbushMaxEntries);
+        this._tiles = {};
+
+        map.on('zoomend', this._reset, this);
+        this._reset();
     },
 
     query: function(latLng, cb, context, options) {
@@ -2383,17 +2384,12 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
 
         var p = this._map.project(latLng, z);
 
-        if (this.options.lazy) {
-            this._loadTiles(p, radius, L.bind(function(err) {
-                if (err) {
-                    return cb(err);
-                }
-                this._query(latLng, p, options, cb, context);
-            }, this));
-            return this;
-        }
-
-        this._query(p, radius, cb, context);
+        this._loadTiles(p, radius, L.bind(function(err) {
+            if (err) {
+                return cb(err);
+            }
+            this._query(latLng, p, options, cb, context);
+        }, this));
         return this;
     },
 
@@ -2434,23 +2430,60 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     _loadTiles: function(p, radius, cb) {
         var se = p.add([radius, radius]),
             nw = p.subtract([radius, radius]),
-            tileBounds = L.bounds(
+            bounds = L.bounds(
                 nw.divideBy(this.options.tileSize)._floor(),
-                se.divideBy(this.options.tileSize)._floor());
+                se.divideBy(this.options.tileSize)._floor()),
+            queue = [],
+            center = this._map.unproject(p);
 
-        this._forceLoadTiles = true;
-        this._addTilesFromCenterOut(tileBounds);
-        this._forceLoadTiles = false;
+        var j, i, point;
 
-        if (this._tilesToLoad) {
-            this.once('load', function() { cb(); });
-        } else {
-            cb();
+        for (j = bounds.min.y; j <= bounds.max.y; j++) {
+            for (i = bounds.min.x; i <= bounds.max.x; i++) {
+                point = new L.Point(i, j);
+
+                if (this._tileShouldBeLoaded(point)) {
+                    queue.push(point);
+                }
+            }
+        }
+
+        var tilesToLoad = queue.length,
+            waitingTiles = tilesToLoad;
+
+        if (tilesToLoad === 0) { return cb(); }
+
+        // load tiles in order of their distance to center
+        queue.sort(function (a, b) {
+            return a.distanceTo(center) - b.distanceTo(center);
+        });
+
+        for (i = 0; i < tilesToLoad; i++) {
+            this._addTile(queue[i], function () {
+                waitingTiles--;
+                if (waitingTiles <= 0) {
+                    cb();
+                }
+            });
         }
     },
 
-    _getZoomForUrl: function() {
-        return L.TileLayer.prototype._getZoomForUrl.call(this) + this.options.zoomIn;
+    getTileUrl: function (tilePoint) {
+        return L.Util.template(this._url, L.extend({
+            s: this._getSubdomain(tilePoint),
+            z: tilePoint.z,
+            x: tilePoint.x,
+            y: tilePoint.y
+        }, this.options));
+    },
+
+    _getSubdomain: function (tilePoint) {
+        var index = Math.abs(tilePoint.x + tilePoint.y) % this.options.subdomains.length;
+        return this.options.subdomains[index];
+    },
+
+    _tileShouldBeLoaded: function(tilePoint) {
+        return true;
     },
 
     _getWrapTileNum: function () {
@@ -2459,15 +2492,14 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         return size.divideBy(this._getTileSize())._floor();
     },
 
-    _addTile: function(tilePoint, fragment, cb) {
+    _addTile: function(tilePoint, cb) {
         var key = this._tileKey(tilePoint),
             tile = { datum: null, processed: false };
 
-        if (!this._tiles[key] && (!this.options.lazy || this._forceLoadTiles)) {
+        if (!this._tiles[key]) {
             this._tiles[key] = tile;
             return this._loadTile(tile, tilePoint, cb);
         } else {
-            this._tileLoaded();
             return cb && cb();
         }
     },
@@ -2480,7 +2512,9 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
         var url,
             request;
 
-        this._adjustTilePoint(tilePoint);
+        //this._adjustTilePoint(tilePoint);
+        tilePoint.z = Math.min(this.options.maxZoom, 
+            Math.max(this.options.minZoom, this._map.getZoom() + this.options.zoomIn));
         url = this.getTileUrl(tilePoint);
         request = corslite(url, L.bind(function(err, data) {
             if (err) {
@@ -2489,19 +2523,18 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
                     url: url,
                     error: err
                 });
-                this._tileLoaded();
+                //this._tileLoaded();
                 return cb && cb(err);
             }
 
             this._parseTile(tile, tilePoint, new Uint8Array(data.response));
-            this._tileLoaded();
+            //this._tileLoaded();
             return cb && cb();
         }, this), true);
         request.responseType = 'arraybuffer';
     },
 
     _reset: function() {
-        L.TileLayer.prototype._reset.call(this);
         this._features = {};
         this._bush.clear();
         this.fire('featurescleared');
@@ -2609,9 +2642,9 @@ module.exports = L.TileLayer.Underneath = L.TileLayer.extend({
     }
 });
 
-L.tileLayer.underneath = function(tileUrl, options) {
-    return new L.TileLayer.Underneath(tileUrl, options);
+L.underneath = function(tileUrl, map, options) {
+    return new L.Underneath(tileUrl, map, options);
 };
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"corslite":1,"pbf":3,"rbush":6,"turf-extent":7,"turf-inside":8,"turf-point":11,"turf-polygon":12,"vector-tile":13}]},{},[17]);
+},{"corslite":1,"pbf":4,"rbush":6,"turf-extent":7,"turf-inside":8,"turf-point":11,"turf-polygon":12,"vector-tile":13}]},{},[17]);
