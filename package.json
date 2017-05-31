@@ -1,6 +1,6 @@
 {
   "name": "leaflet-underneath",
-  "version": "2.0.0",
+  "version": "3.0.0",
   "description": "Find features from a point using Mapbox Vector Tiles data",
   "keywords": [
     "leaflet",

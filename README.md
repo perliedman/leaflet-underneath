@@ -10,7 +10,7 @@ This is done using [Mapbox Vector Tiles](https://www.mapbox.com/developers/vecto
 
 ### Leaflet 1.0 compatibility
 
-Version 2.0 and up of Leaflet Underneath is only compatible with Leaflet 1.0; earlier versions only work with Leaflet 0.7.
+Version 3.0 and up of Leaflet Underneath is only compatible with Leaflet 1.0; earlier versions only work with Leaflet 0.7.
 
 ## Using
 
