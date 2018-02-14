@@ -31,7 +31,7 @@ map.on('click', function(e) {
                     c = f.geometry.coordinates;
                 content += '<li><span class="maki-icon ' +
                     f.properties.maki + '"></span>' +
-                    f.properties.name +
+                    (f.properties.name || f.properties.type) +
                     '</li>';
             }
 
